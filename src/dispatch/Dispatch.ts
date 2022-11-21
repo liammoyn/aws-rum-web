@@ -7,6 +7,7 @@ import { PutRumEventsRequest } from './dataplane';
 import { Config } from '../orchestration/Orchestration';
 import { v4 } from 'uuid';
 import { RetryHttpHandler } from './RetryHttpHandler';
+import { BatchEvaluateFeatureRequest } from '../evidently/types';
 
 type SendFunction = (
     putRumEventsRequest: PutRumEventsRequest
@@ -15,6 +16,12 @@ type SendFunction = (
 interface DataPlaneClientInterface {
     sendFetch: SendFunction;
     sendBeacon: SendFunction;
+}
+
+interface EvidentlyClientInterface {
+    fetchEvaluations: (
+        request: BatchEvaluateFeatureRequest
+    ) => Promise<{ response: HttpResponse }>;
 }
 
 const NO_CRED_MSG = 'CWR: Cannot dispatch; no AWS credentials.';
@@ -30,6 +37,7 @@ export class Dispatch {
     private endpoint: URL;
     private eventCache: EventCache;
     private rum: DataPlaneClientInterface;
+    private evidently: EvidentlyClientInterface;
     private enabled: boolean;
     private dispatchTimerId: number | undefined;
     private buildClient: ClientBuilder;
@@ -57,8 +65,19 @@ export class Dispatch {
                     return Promise.reject(new Error(NO_CRED_MSG));
                 }
             };
+            this.evidently = {
+                fetchEvaluations: (): Promise<{ response: HttpResponse }> => {
+                    return Promise.reject(new Error(NO_CRED_MSG));
+                }
+            };
         } else {
-            this.rum = this.buildClient(this.endpoint, this.region, undefined);
+            const dpClient = this.buildClient(
+                this.endpoint,
+                this.region,
+                undefined
+            );
+            this.rum = dpClient;
+            this.evidently = dpClient;
         }
     }
 
@@ -87,17 +106,25 @@ export class Dispatch {
     public setAwsCredentials(
         credentialProvider: Credentials | CredentialProvider
     ): void {
-        this.rum = this.buildClient(
+        const dpClient = this.buildClient(
             this.endpoint,
             this.region,
             credentialProvider
         );
+        this.rum = dpClient;
+        this.evidently = dpClient;
         if (typeof credentialProvider === 'function') {
             // In case a beacon in the first dispatch, we must pre-fetch credentials into a cookie so there is no delay
             // to fetch credentials while the page is closing.
             (credentialProvider as () => Promise<Credentials>)();
         }
     }
+
+    public dispatchEvaluateFeature = async (
+        request: BatchEvaluateFeatureRequest
+    ): Promise<{ response: HttpResponse } | undefined> => {
+        return this.evidently.fetchEvaluations(request);
+    };
 
     /**
      * Send meta data and events to the AWS RUM data plane service via fetch.
@@ -255,7 +282,8 @@ export class Dispatch {
             beaconRequestHandler: new BeaconHttpHandler(),
             endpoint,
             region,
-            credentials
+            credentials,
+            evidentlyConfig: this.config.evidentlyConfig
         });
     };
 }

@@ -14,8 +14,13 @@ import {
     UserDetails,
     RumEvent
 } from './dataplane';
+import {
+    BatchEvaluateFeatureRequest,
+    EvidentlyConfig
+} from '../evidently/types';
 
-const SERVICE = 'rum';
+const RUM_SERVICE = 'rum';
+const EVIDENTLY_SERVICE = 'evidently';
 const METHOD = 'POST';
 const CONTENT_TYPE_JSON = 'application/json';
 const CONTENT_TYPE_TEXT = 'text/plain;charset=UTF-8';
@@ -43,20 +48,30 @@ export declare type DataPlaneClientConfig = {
     endpoint: URL;
     region: string;
     credentials: CredentialProvider | Credentials | undefined;
+    evidentlyConfig?: EvidentlyConfig;
 };
 
 export class DataPlaneClient {
     private config: DataPlaneClientConfig;
-    private awsSigV4: SignatureV4 | undefined;
+    private awsSigV4Rum: SignatureV4 | undefined;
+    private awsSigV4Evidently: SignatureV4 | undefined;
 
     constructor(config: DataPlaneClientConfig) {
         this.config = config;
         if (config.credentials) {
-            this.awsSigV4 = new SignatureV4({
+            this.awsSigV4Rum = new SignatureV4({
                 applyChecksum: true,
                 credentials: config.credentials,
                 region: config.region,
-                service: SERVICE,
+                service: RUM_SERVICE,
+                uriEscapePath: true,
+                sha256: Sha256
+            });
+            this.awsSigV4Evidently = new SignatureV4({
+                applyChecksum: true,
+                credentials: config.credentials,
+                region: config.region,
+                service: EVIDENTLY_SERVICE,
                 uriEscapePath: true,
                 sha256: Sha256
             });
@@ -67,12 +82,14 @@ export class DataPlaneClient {
         putRumEventsRequest: PutRumEventsRequest
     ): Promise<{ response: HttpResponse }> => {
         const options = await this.getHttpRequestOptions(
-            putRumEventsRequest,
-            CONTENT_TYPE_JSON
+            serializeRequest(putRumEventsRequest),
+            `appmonitors/${putRumEventsRequest.AppMonitorDetails.id}`,
+            this.config.endpoint,
+            CONTENT_TYPE_TEXT
         );
         let request: HttpRequest = new HttpRequest(options);
-        if (this.awsSigV4) {
-            request = (await this.awsSigV4.sign(request)) as HttpRequest;
+        if (this.awsSigV4Rum) {
+            request = (await this.awsSigV4Rum.sign(request)) as HttpRequest;
         }
         const httpResponse: Promise<{
             response: HttpResponse;
@@ -84,12 +101,14 @@ export class DataPlaneClient {
         putRumEventsRequest: PutRumEventsRequest
     ): Promise<{ response: HttpResponse }> => {
         const options = await this.getHttpRequestOptions(
-            putRumEventsRequest,
+            serializeRequest(putRumEventsRequest),
+            `appmonitors/${putRumEventsRequest.AppMonitorDetails.id}`,
+            this.config.endpoint,
             CONTENT_TYPE_TEXT
         );
         let request: HttpRequest = new HttpRequest(options);
-        if (this.awsSigV4) {
-            request = (await this.awsSigV4.presign(
+        if (this.awsSigV4Rum) {
+            request = (await this.awsSigV4Rum.presign(
                 request,
                 REQUEST_PRESIGN_ARGS
             )) as HttpRequest;
@@ -100,26 +119,51 @@ export class DataPlaneClient {
         return httpResponse;
     };
 
+    public fetchEvaluations = async (
+        evaluationsRequest: BatchEvaluateFeatureRequest
+    ): Promise<{ response: HttpResponse }> => {
+        if (!this.config.evidentlyConfig) {
+            throw Error('Evidently not enabled');
+        }
+        const options = await this.getHttpRequestOptions(
+            evaluationsRequest,
+            `projects/${this.config.evidentlyConfig.project}/evaluations`,
+            this.config.evidentlyConfig.endpoint,
+            CONTENT_TYPE_JSON
+        );
+        let request: HttpRequest = new HttpRequest(options);
+        if (this.awsSigV4Evidently) {
+            request = (await this.awsSigV4Evidently.sign(
+                request,
+                REQUEST_PRESIGN_ARGS
+            )) as HttpRequest;
+        }
+        const httpResponse: Promise<{
+            response: HttpResponse;
+        }> = this.config.fetchRequestHandler.handle(request);
+        return httpResponse;
+    };
+
     private getHttpRequestOptions = async (
-        putRumEventsRequest: PutRumEventsRequest,
+        requestToStringify: any,
+        pathPostfix: string,
+        endpoint: URL,
         contentType: string
     ) => {
-        const serializedRequest: string = JSON.stringify(
-            serializeRequest(putRumEventsRequest)
-        );
-        const path = this.config.endpoint.pathname.replace(/\/$/, '');
+        const serializedRequest: string = JSON.stringify(requestToStringify);
+        const path = endpoint.pathname.replace(/\/$/, '');
         const options = {
             method: METHOD,
-            protocol: this.config.endpoint.protocol,
+            protocol: endpoint.protocol,
             headers: {
                 'content-type': contentType,
-                host: this.config.endpoint.host
+                host: endpoint.host
             },
-            hostname: this.config.endpoint.hostname,
-            path: `${path}/appmonitors/${putRumEventsRequest.AppMonitorDetails.id}`,
+            hostname: endpoint.hostname,
+            path: `${path}/${pathPostfix}`,
             body: serializedRequest
         };
-        if (this.awsSigV4) {
+        if (this.awsSigV4Rum) {
             return {
                 ...options,
                 headers: {

@@ -23,9 +23,20 @@ import { XhrPlugin } from '../plugins/event-plugins/XhrPlugin';
 import { FetchPlugin } from '../plugins/event-plugins/FetchPlugin';
 import { PageViewPlugin } from '../plugins/event-plugins/PageViewPlugin';
 import { PageAttributes } from '../sessions/PageManager';
+import {
+    EvidentlyManager,
+    MAX_EVIDENTLY_FEATURES_PER_EVENT
+} from '../evidently/EvidentlyManager';
+import {
+    EvaluationResults,
+    EvidentlyConfig,
+    EvidentlyRequest,
+    PartialEvidentlyConfig
+} from '../evidently/types';
 
 const DEFAULT_REGION = 'us-west-2';
 const DEFAULT_ENDPOINT = `https://dataplane.rum.${DEFAULT_REGION}.amazonaws.com`;
+const DEFAULT_EVIDENTLY_ENDPOINT = `https://dataplane.evidently.${DEFAULT_REGION}.amazonaws.com`;
 
 export enum TelemetryEnum {
     Errors = 'errors',
@@ -98,6 +109,7 @@ export type PartialConfig = {
     telemetries?: Telemetry[];
     useBeacon?: boolean;
     userIdRetentionDays?: number;
+    evidentlyConfig?: PartialEvidentlyConfig;
 };
 
 export const defaultCookieAttributes = (): CookieAttributes => {
@@ -107,6 +119,13 @@ export const defaultCookieAttributes = (): CookieAttributes => {
         path: '/',
         sameSite: 'Strict',
         secure: true
+    };
+};
+
+const defaultEvidentlyConfig = (project: string): EvidentlyConfig => {
+    return {
+        project,
+        endpoint: new URL(DEFAULT_EVIDENTLY_ENDPOINT)
     };
 };
 
@@ -188,6 +207,7 @@ export type Config = {
     telemetries: Telemetry[];
     useBeacon: boolean;
     userIdRetentionDays: number;
+    evidentlyConfig?: EvidentlyConfig;
 };
 
 /**
@@ -202,6 +222,7 @@ export class Orchestration {
     private eventCache: EventCache;
     private dispatchManager: Dispatch;
     private config: Config;
+    private evidentlyManager?: EvidentlyManager;
 
     /**
      * Instantiate the CloudWatch RUM web client and begin monitoring the
@@ -256,6 +277,15 @@ export class Orchestration {
         // code.
         this.config.endpointUrl = new URL(this.config.endpoint);
 
+        if (partialConfig.evidentlyConfig) {
+            this.config.evidentlyConfig = {
+                ...defaultEvidentlyConfig(
+                    partialConfig.evidentlyConfig.project
+                ),
+                ...partialConfig.evidentlyConfig
+            };
+        }
+
         this.eventCache = this.initEventCache(
             applicationId,
             applicationVersion
@@ -266,6 +296,8 @@ export class Orchestration {
             applicationId,
             applicationVersion
         );
+
+        this.evidentlyManager = this.initEvidently(this.config);
 
         if (this.config.enableRumClient) {
             this.enable();
@@ -385,6 +417,42 @@ export class Orchestration {
      */
     public recordEvent(eventType: string, eventData: object) {
         this.eventCache.recordEvent(eventType, eventData);
+    }
+
+    /**
+     * Returns an evaluation for the given evidently features
+     *
+     * @param request A request specifying Evidently features and the user context they should be evaluated for
+     * @returns A promise containing a map from Evidently feature to the given user evaluation
+     */
+    public evaluateFeature(
+        request: EvidentlyRequest
+    ): Promise<EvaluationResults> {
+        if (request.features.length > MAX_EVIDENTLY_FEATURES_PER_EVENT) {
+            return Promise.reject(
+                Error(
+                    `Can only request up to ${MAX_EVIDENTLY_FEATURES_PER_EVENT} features at a time`
+                )
+            );
+        }
+        const promise = this.evidentlyManager?.evaluateFeature(request);
+        if (promise) {
+            return promise;
+        } else {
+            throw Error('Evidently not enabled');
+        }
+    }
+
+    private initEvidently(config: Config): EvidentlyManager | undefined {
+        if (config.evidentlyConfig) {
+            return new EvidentlyManager(
+                config,
+                this.eventCache,
+                this.dispatchManager
+            );
+        } else {
+            return undefined;
+        }
     }
 
     private initEventCache(

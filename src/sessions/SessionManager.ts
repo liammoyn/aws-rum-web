@@ -18,6 +18,8 @@ export const SESSION_START_EVENT_TYPE = 'com.amazon.rum.session_start_event';
 export const RUM_SESSION_START = 'rum_session_start';
 export const RUM_SESSION_EXPIRE = 'rum_session_expire';
 
+const EVIDENTLY_EVALUATION_PREFIX = 'aws:ev:feat:';
+
 export type RecordSessionInitEvent = (
     session: Session,
     type: string,
@@ -133,6 +135,25 @@ export class SessionManager {
         this.attributes = { ...sessionAttributes, ...this.attributes };
     }
 
+    /**
+     * Replaces Evidently evaluations in the session attributes with the new given evaluations.
+     *
+     * @param evidentlyAttributes object mapping feature names to variation names
+     */
+    public replaceEvidentlySessionAttributes(evidentlyAttributes: {
+        [featureName: string]: string;
+    }) {
+        const attributesWithoutEvidently = Object.fromEntries(
+            Object.entries(this.attributes).filter(
+                ([key, _]) => !key.startsWith(EVIDENTLY_EVALUATION_PREFIX)
+            )
+        ) as Attributes;
+        this.attributes = {
+            ...attributesWithoutEvidently,
+            ...evidentlyAttributes
+        };
+    }
+
     public getUserId(): string {
         if (this.useCookies()) {
             return this.userId;
@@ -154,7 +175,7 @@ export class SessionManager {
 
         if (this.config.userIdRetentionDays <= 0) {
             // Use the 'nil' UUID when the user ID will not be retained
-            this.userId = '00000000-0000-0000-0000-000000000000';
+            this.userId = NIL_UUID;
         } else if (this.useCookies()) {
             userId = this.getUserIdCookie();
             this.userId = userId ? userId : v4();

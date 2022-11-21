@@ -1,9 +1,10 @@
 import { CredentialProvider, Credentials } from '@aws-sdk/types';
 import { Plugin } from 'plugins/Plugin';
+import { EvaluationCallback, EvidentlyRequest } from 'evidently/types';
 import { PartialConfig, Orchestration } from './orchestration/Orchestration';
 import { getRemoteConfig } from './remote-config/remote-config';
 
-export type CommandFunction = (payload?: any) => void;
+export type CommandFunction = (...payload: any) => void;
 
 interface CommandFunctions {
     setAwsCredentials: CommandFunction;
@@ -17,12 +18,13 @@ interface CommandFunctions {
     enable: CommandFunction;
     disable: CommandFunction;
     allowCookies: CommandFunction;
+    evaluateFeature: CommandFunction;
 }
 
 /**
  * An AWS RUM Client command.
  */
-export type Command = { c: string; p: any };
+export type Command = { c: string; p: any[] };
 
 /**
  * The global configuration object is defined in the loader script, so we cannot trust its types.
@@ -96,6 +98,23 @@ export class CommandQueue {
             } else {
                 throw new Error('IncorrectParametersException');
             }
+        },
+        evaluateFeature: (
+            request: EvidentlyRequest,
+            callback: EvaluationCallback
+        ): void => {
+            if (typeof callback === 'function') {
+                this.orchestration
+                    .evaluateFeature(request)
+                    .then((results) => {
+                        callback(undefined, results);
+                    })
+                    .catch((err: Error) => {
+                        callback(err, undefined);
+                    });
+            } else {
+                throw new Error('IncorrectParametersException');
+            }
         }
     };
 
@@ -128,7 +147,7 @@ export class CommandQueue {
             command.c as keyof CommandFunctions
         ];
         if (commandHandler) {
-            commandHandler(command.p);
+            commandHandler(...command.p);
         } else {
             throw new Error(`CWR: UnsupportedOperationException: ${command.c}`);
         }
@@ -143,7 +162,7 @@ export class CommandQueue {
         );
 
         // Overwrite the global API to use CommandQueue
-        (window as any)[awsRum.n] = (c: string, p: any) => {
+        (window as any)[awsRum.n] = (c: string, ...p: any) => {
             this.push({ c, p });
         };
 

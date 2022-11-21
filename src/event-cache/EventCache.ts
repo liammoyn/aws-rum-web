@@ -161,6 +161,18 @@ export class EventCache {
     }): void {
         this.sessionManager.addSessionAttributes(sessionAttributes);
     }
+    /**
+     * Replaces Evidently evaluations in session attributes with given evaluation attributes.
+     *
+     * @param evidentlyAttributes object mapping feature names to variation names
+     */
+    public replaceEvidentlySessionAttributes(evidentlyAttributes: {
+        [featureName: string]: string;
+    }) {
+        this.sessionManager.replaceEvidentlySessionAttributes(
+            evidentlyAttributes
+        );
+    }
 
     /**
      * Add a session start event to the cache.

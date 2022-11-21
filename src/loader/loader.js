@@ -20,7 +20,7 @@ export function loader(
         };
 
         // The AWS RUM client's JavaScript API
-        window[n] = function (c, p) {
+        window[n] = function (c, ...p) {
             x.q.push({ c: c, p: p });
         };
 
