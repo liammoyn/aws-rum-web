@@ -18,7 +18,9 @@ interface CommandFunctions {
     enable: CommandFunction;
     disable: CommandFunction;
     allowCookies: CommandFunction;
-    evaluateFeature: CommandFunction;
+    loadEvaluations: CommandFunction;
+    getEvaluations: CommandFunction;
+    // evaluateFeature: CommandFunction;
 }
 
 /**
@@ -99,13 +101,16 @@ export class CommandQueue {
                 throw new Error('IncorrectParametersException');
             }
         },
-        evaluateFeature: (
-            request: EvidentlyRequest,
+        loadEvaluations: (request: EvidentlyRequest): void => {
+            this.orchestration.loadEvaluations(request);
+        },
+        getEvaluations: (
+            features: string[],
             callback: EvaluationCallback
         ): void => {
             if (typeof callback === 'function') {
                 this.orchestration
-                    .evaluateFeature(request)
+                    .getEvaluations(features)
                     .then((results) => {
                         callback(undefined, results);
                     })
@@ -116,6 +121,23 @@ export class CommandQueue {
                 throw new Error('IncorrectParametersException');
             }
         }
+        // evaluateFeature: (
+        //     request: EvidentlyRequest,
+        //     callback: EvaluationCallback
+        // ): void => {
+        //     if (typeof callback === 'function') {
+        //         this.orchestration
+        //             .evaluateFeature(request)
+        //             .then((results) => {
+        //                 callback(undefined, results);
+        //             })
+        //             .catch((err: Error) => {
+        //                 callback(err, undefined);
+        //             });
+        //     } else {
+        //         throw new Error('IncorrectParametersException');
+        //     }
+        // }
     };
 
     /**

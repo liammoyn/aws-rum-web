@@ -419,15 +419,7 @@ export class Orchestration {
         this.eventCache.recordEvent(eventType, eventData);
     }
 
-    /**
-     * Returns an evaluation for the given evidently features
-     *
-     * @param request A request specifying Evidently features and the user context they should be evaluated for
-     * @returns A promise containing a map from Evidently feature to the given user evaluation
-     */
-    public evaluateFeature(
-        request: EvidentlyRequest
-    ): Promise<EvaluationResults> {
+    public loadEvaluations(request: EvidentlyRequest) {
         if (request.features.length > MAX_EVIDENTLY_FEATURES_PER_EVENT) {
             return Promise.reject(
                 Error(
@@ -435,13 +427,41 @@ export class Orchestration {
                 )
             );
         }
-        const promise = this.evidentlyManager?.evaluateFeature(request);
+        this.evidentlyManager?.loadEvaluations(request);
+    }
+
+    public getEvaluations(feautres: string[]): Promise<EvaluationResults> {
+        const promise = this.evidentlyManager?.getEvaluations(feautres);
         if (promise) {
             return promise;
         } else {
             throw Error('Evidently not enabled');
         }
     }
+
+    /**
+     * Returns an evaluation for the given evidently features
+     *
+     * @param request A request specifying Evidently features and the user context they should be evaluated for
+     * @returns A promise containing a map from Evidently feature to the given user evaluation
+     */
+    // public evaluateFeature(
+    //     request: EvidentlyRequest
+    // ): Promise<EvaluationResults> {
+    //     if (request.features.length > MAX_EVIDENTLY_FEATURES_PER_EVENT) {
+    //         return Promise.reject(
+    //             Error(
+    //                 `Can only request up to ${MAX_EVIDENTLY_FEATURES_PER_EVENT} features at a time`
+    //             )
+    //         );
+    //     }
+    //     const promise = this.evidentlyManager?.evaluateFeature(request);
+    //     if (promise) {
+    //         return promise;
+    //     } else {
+    //         throw Error('Evidently not enabled');
+    //     }
+    // }
 
     private initEvidently(config: Config): EvidentlyManager | undefined {
         if (config.evidentlyConfig) {

@@ -51,6 +51,10 @@ export type Attributes = {
     [k: string]: string | number | boolean;
 };
 
+export type EvidentlyAttributes = {
+    [feature: string]: string;
+};
+
 /**
  * The session handler handles user id and session id.
  *
@@ -71,6 +75,7 @@ export class SessionManager {
     private config: Config;
     private record: RecordSessionInitEvent;
     private attributes!: Attributes;
+    private evidentlyAttributes!: EvidentlyAttributes;
 
     constructor(
         appMonitorDetails: AppMonitorDetails,
@@ -99,6 +104,8 @@ export class SessionManager {
         // Set custom session attributes
         this.addSessionAttributes(this.config.sessionAttributes);
 
+        this.resetEvidentlyAttributes();
+
         // Attempt to restore the previous session
         this.getSessionFromCookie();
     }
@@ -121,7 +128,7 @@ export class SessionManager {
     }
 
     public getAttributes(): Attributes {
-        return this.attributes;
+        return { ...this.attributes, ...this.evidentlyAttributes };
     }
 
     /**
@@ -136,22 +143,19 @@ export class SessionManager {
     }
 
     /**
-     * Replaces Evidently evaluations in the session attributes with the new given evaluations.
+     * Adds evaluations to Evidently attributes.
      *
      * @param evidentlyAttributes object mapping feature names to variation names
      */
-    public replaceEvidentlySessionAttributes(evidentlyAttributes: {
-        [featureName: string]: string;
-    }) {
-        const attributesWithoutEvidently = Object.fromEntries(
-            Object.entries(this.attributes).filter(
-                ([key, _]) => !key.startsWith(EVIDENTLY_EVALUATION_PREFIX)
-            )
-        ) as Attributes;
-        this.attributes = {
-            ...attributesWithoutEvidently,
+    public addEvidentlyAttributes(evidentlyAttributes: EvidentlyAttributes) {
+        this.evidentlyAttributes = {
+            ...this.evidentlyAttributes,
             ...evidentlyAttributes
         };
+    }
+
+    public resetEvidentlyAttributes() {
+        this.evidentlyAttributes = {};
     }
 
     public getUserId(): string {
