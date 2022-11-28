@@ -1,13 +1,17 @@
-export type EvaluationCallback = (err?: Error, res?: EvaluationResults) => void;
+export type EvaluationCallback = (
+    err?: Error,
+    res?: ClientEvaluationResults
+) => void;
 
 export type ContextType = { [k: string]: any };
 export type PartialEvidentlyConfig = {
     project: string;
-    endpoint?: URL;
+    endpoint?: string;
 };
 export type EvidentlyConfig = {
     project?: string;
-    endpoint: URL;
+    endpoint: string;
+    endpointUrl: URL;
 };
 export type EvidentlyRequest = {
     features: string[];
@@ -20,24 +24,26 @@ type VariationValue = {
     longValue?: number;
     stringValue?: string;
 };
-export type EvaluationResult = {
+export type ClientEvaluationResult = {
     feature: string;
     reason: string;
     value: VariationValue;
     variation: string;
 };
-export type EvaluationResults = { [feature: string]: EvaluationResult };
+export type ClientEvaluationResults = {
+    [feature: string]: ClientEvaluationResult;
+};
 
-export type APIEvaluationRequest = {
+export type EvaluationRequest = {
     entityId: string;
     evaluationContext?: string;
     feature: string;
 };
 export type BatchEvaluateFeatureRequest = {
-    requests: APIEvaluationRequest[];
+    requests: EvaluationRequest[];
 };
 
-export type APIEvaluationResult = {
+export type EvaluationResult = {
     details: string;
     entityId: string;
     feature: string;
@@ -47,5 +53,5 @@ export type APIEvaluationResult = {
     variation: string;
 };
 export type BatchEvaluateFeatureResult = {
-    results: APIEvaluationResult[];
+    results: EvaluationResult[];
 };

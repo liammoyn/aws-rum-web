@@ -33,7 +33,7 @@ export class EvidentlyClient {
         }
     }
 
-    public fetchEvaluations = async (
+    public batchEvaluateFeature = async (
         evaluationsRequest: BatchEvaluateFeatureRequest
     ): Promise<{ response: HttpResponse }> => {
         if (!this.config.project) {

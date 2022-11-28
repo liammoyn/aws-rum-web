@@ -50,6 +50,15 @@ jest.mock('../../plugins/PluginManager', () => ({
     }))
 }));
 
+const loadEvaluations = jest.fn();
+const getEvaluations = jest.fn();
+jest.mock('../../evidently/EvidentlyManager', () => ({
+    EvidentlyManager: jest.fn().mockImplementation(() => ({
+        loadEvaluations,
+        getEvaluations
+    }))
+}));
+
 describe('Orchestration tests', () => {
     afterEach(() => {
         jest.clearAllMocks();
@@ -160,6 +169,13 @@ describe('Orchestration tests', () => {
             ),
             eventCacheSize: 200,
             eventPluginsToLoad: [],
+            evidentlyConfig: {
+                endpoint: 'https://dataplane.evidently.us-west-2.amazonaws.com',
+                endpointUrl: new URL(
+                    'https://dataplane.evidently.us-west-2.amazonaws.com/'
+                ),
+                project: undefined
+            },
             pageIdFormat: PageIdFormatEnum.Path,
             pagesToExclude: [],
             pagesToInclude: [/.*/],
@@ -479,6 +495,28 @@ describe('Orchestration tests', () => {
         orchestration.recordEvent('custom_event', {});
         expect(recordEvent).toHaveBeenCalledTimes(1);
         const actual = recordEvent.mock.calls[0][1];
+        expect(actual).toEqual(expected);
+    });
+
+    test('when loadEvaluations is called then EvidentlyManager.loadEvaluations is called', async () => {
+        // Init
+        const orchestration = new Orchestration('a', 'c', 'us-east-1', {});
+        const featureList = Array.from({ length: 5 }, (_, i) => `feature${i}`);
+        const expected = { features: featureList };
+
+        orchestration.loadEvaluations(expected);
+        expect(loadEvaluations).toHaveBeenCalledTimes(1);
+        const actual = loadEvaluations.mock.calls[0][0];
+        expect(actual).toEqual(expected);
+    });
+
+    test('when getEvaluations is called then EvidentlyManager.getEvaluations is called', async () => {
+        const orchestration = new Orchestration('a', 'c', 'us-east-1', {});
+        const expected = ['feature01'];
+
+        orchestration.getEvaluations(expected);
+        expect(getEvaluations).toHaveBeenCalledTimes(1);
+        const actual = getEvaluations.mock.calls[0][0];
         expect(actual).toEqual(expected);
     });
 });

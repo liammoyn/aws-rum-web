@@ -27,12 +27,9 @@ import { XhrPlugin } from '../plugins/event-plugins/XhrPlugin';
 import { FetchPlugin } from '../plugins/event-plugins/FetchPlugin';
 import { PageViewPlugin } from '../plugins/event-plugins/PageViewPlugin';
 import { PageAttributes } from '../sessions/PageManager';
+import { EvidentlyManager } from '../evidently/EvidentlyManager';
 import {
-    EvidentlyManager,
-    MAX_EVIDENTLY_FEATURES_PER_EVENT
-} from '../evidently/EvidentlyManager';
-import {
-    EvaluationResults,
+    ClientEvaluationResults,
     EvidentlyConfig,
     EvidentlyRequest,
     PartialEvidentlyConfig
@@ -127,10 +124,14 @@ export const defaultCookieAttributes = (): CookieAttributes => {
     };
 };
 
-const defaultEvidentlyConfig = (project?: string): EvidentlyConfig => {
+export const defaultEvidentlyConfig = (
+    partialConfig?: PartialEvidentlyConfig
+): EvidentlyConfig => {
+    const endpoint = partialConfig?.endpoint || DEFAULT_EVIDENTLY_ENDPOINT;
     return {
-        project,
-        endpoint: new URL(DEFAULT_EVIDENTLY_ENDPOINT)
+        project: partialConfig?.project,
+        endpoint,
+        endpointUrl: new URL(endpoint)
     };
 };
 
@@ -285,7 +286,7 @@ export class Orchestration {
         this.config.endpointUrl = new URL(this.config.endpoint);
 
         this.config.evidentlyConfig = {
-            ...defaultEvidentlyConfig(partialConfig.evidentlyConfig?.project),
+            ...defaultEvidentlyConfig(partialConfig.evidentlyConfig),
             ...partialConfig.evidentlyConfig
         };
 
@@ -428,24 +429,19 @@ export class Orchestration {
      * @param request An object with the user indentification and context information and a list of requested features.
      */
     public loadEvaluations(request: EvidentlyRequest) {
-        if (request.features.length > MAX_EVIDENTLY_FEATURES_PER_EVENT) {
-            throw new Error(
-                `Can only request up to ${MAX_EVIDENTLY_FEATURES_PER_EVENT} features at a time`
-            );
-        }
         this.evidentlyManager.loadEvaluations(request);
     }
 
     /**
      * Returns evaluations for each passed feature, if they have been previously loaded. Also adds those evaluations to the session attributes.
      *
-     * @param feautres The list of features to return evaluations for.
+     * @param features The list of features to return evaluations for.
      * @returns A map from feature name to its given evaluation.
      */
     public async getEvaluations(
-        feautres: string[]
-    ): Promise<EvaluationResults> {
-        return await this.evidentlyManager.getEvaluations(feautres);
+        features: string[]
+    ): Promise<ClientEvaluationResults> {
+        return await this.evidentlyManager.getEvaluations(features);
     }
 
     private initEvidently(config: Config): EvidentlyManager {

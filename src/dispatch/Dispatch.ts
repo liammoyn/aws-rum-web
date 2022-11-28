@@ -20,7 +20,7 @@ interface DataPlaneClientInterface {
 }
 
 interface EvidentlyClientInterface {
-    fetchEvaluations: (
+    batchEvaluateFeature: (
         request: BatchEvaluateFeatureRequest
     ) => Promise<{ response: HttpResponse }>;
 }
@@ -77,14 +77,16 @@ export class Dispatch {
                 }
             };
             this.evidently = {
-                fetchEvaluations: (): Promise<{ response: HttpResponse }> => {
+                batchEvaluateFeature: (): Promise<{
+                    response: HttpResponse;
+                }> => {
                     return Promise.reject(new Error(NO_CRED_MSG));
                 }
             };
         } else {
             this.rum = this.buildClient(this.endpoint, this.region, undefined);
             this.evidently = this.buildEvidentlyClient(
-                this.config.evidentlyConfig.endpoint,
+                this.config.evidentlyConfig.endpointUrl,
                 this.region,
                 undefined,
                 this.config.evidentlyConfig.project
@@ -123,7 +125,7 @@ export class Dispatch {
             credentialProvider
         );
         this.evidently = this.buildEvidentlyClient(
-            this.config.evidentlyConfig.endpoint,
+            this.config.evidentlyConfig.endpointUrl,
             this.region,
             credentialProvider,
             this.config.evidentlyConfig.project
@@ -135,10 +137,13 @@ export class Dispatch {
         }
     }
 
-    public dispatchEvaluateFeature = async (
+    /**
+     * Make an evaluateFeature API call and return the response.
+     */
+    public dispatchBatchEvaluateFeature = async (
         request: BatchEvaluateFeatureRequest
     ): Promise<{ response: HttpResponse } | undefined> => {
-        return this.evidently.fetchEvaluations(request);
+        return this.evidently.batchEvaluateFeature(request);
     };
 
     /**

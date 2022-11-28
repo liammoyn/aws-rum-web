@@ -48,6 +48,8 @@ const recordPageView = jest.fn();
 const recordError = jest.fn();
 const registerDomEvents = jest.fn();
 const recordEvent = jest.fn();
+const loadEvaluations = jest.fn();
+const getEvaluations = jest.fn();
 jest.mock('../orchestration/Orchestration', () => ({
     Orchestration: jest.fn().mockImplementation(() => ({
         disable,
@@ -60,7 +62,9 @@ jest.mock('../orchestration/Orchestration', () => ({
         recordPageView,
         recordError,
         registerDomEvents,
-        recordEvent
+        recordEvent,
+        loadEvaluations,
+        getEvaluations
     }))
 }));
 
@@ -77,7 +81,7 @@ describe('CommandQueue tests', () => {
         const cq: CommandQueue = getCommandQueue();
         const result = await cq.push({
             c: 'disable',
-            p: undefined
+            p: []
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(disable).toHaveBeenCalled();
@@ -202,7 +206,7 @@ describe('CommandQueue tests', () => {
         return expect(
             commandQueue.push({
                 c: 'recordLog',
-                p: { event: 'my_log' }
+                p: [{ event: 'my_log' }]
             })
         ).rejects.toEqual(
             new Error('CWR: UnsupportedOperationException: recordLog')
@@ -213,7 +217,7 @@ describe('CommandQueue tests', () => {
         const cq: CommandQueue = getCommandQueue();
         const result = await cq.push({
             c: 'enable',
-            p: undefined
+            p: []
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(enable).toHaveBeenCalled();
@@ -223,7 +227,7 @@ describe('CommandQueue tests', () => {
         const cq: CommandQueue = getCommandQueue();
         const result = await cq.push({
             c: 'dispatch',
-            p: undefined
+            p: []
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(dispatch).toHaveBeenCalled();
@@ -233,7 +237,7 @@ describe('CommandQueue tests', () => {
         const cq: CommandQueue = getCommandQueue();
         const result = await cq.push({
             c: 'dispatchBeacon',
-            p: undefined
+            p: []
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(dispatchBeacon).toHaveBeenCalled();
@@ -243,7 +247,7 @@ describe('CommandQueue tests', () => {
         const cq: CommandQueue = getCommandQueue();
         const result = await cq.push({
             c: 'setAwsCredentials',
-            p: { event: 'my_event' }
+            p: [{ event: 'my_event' }]
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(setAwsCredentials).toHaveBeenCalled();
@@ -253,7 +257,7 @@ describe('CommandQueue tests', () => {
         const cq: CommandQueue = getCommandQueue();
         const result = await cq.push({
             c: 'addSessionAttributes',
-            p: { customAttribute: 'customAttributeValue' }
+            p: [{ customAttribute: 'customAttributeValue' }]
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(addSessionAttributes).toHaveBeenCalled();
@@ -263,7 +267,7 @@ describe('CommandQueue tests', () => {
         const cq: CommandQueue = getCommandQueue();
         await cq.push({
             c: 'allowCookies',
-            p: false
+            p: [false]
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(allowCookies).toHaveBeenCalled();
@@ -273,7 +277,7 @@ describe('CommandQueue tests', () => {
         const cq: CommandQueue = getCommandQueue();
         await cq.push({
             c: 'recordPageView',
-            p: '/console/home'
+            p: ['/console/home']
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(recordPageView).toHaveBeenCalled();
@@ -283,7 +287,7 @@ describe('CommandQueue tests', () => {
         const cq: CommandQueue = getCommandQueue();
         await cq.push({
             c: 'recordError',
-            p: false
+            p: [false]
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(recordError).toHaveBeenCalled();
@@ -293,7 +297,7 @@ describe('CommandQueue tests', () => {
         const cq: CommandQueue = getCommandQueue();
         await cq.push({
             c: 'registerDomEvents',
-            p: false
+            p: [false]
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(registerDomEvents).toHaveBeenCalled();
@@ -304,7 +308,7 @@ describe('CommandQueue tests', () => {
         await cq
             .push({
                 c: 'allowCookies',
-                p: ''
+                p: ['']
             })
             .then((v) => fail('command should fail'))
             .catch((e) =>
@@ -312,12 +316,73 @@ describe('CommandQueue tests', () => {
             );
     });
 
+    test('loadEvaluations calls Orchestration.loadEvaluations', async () => {
+        const cq: CommandQueue = getCommandQueue();
+        await cq.push({
+            c: 'loadEvaluations',
+            p: [false]
+        });
+        expect(Orchestration).toHaveBeenCalled();
+        expect(loadEvaluations).toHaveBeenCalled();
+    });
+
+    test('getEvaluations fails when not given a callback', async () => {
+        const cq: CommandQueue = getCommandQueue();
+        await cq
+            .push({
+                c: 'getEvaluations',
+                p: [['feature01', 'feature02']]
+            })
+            .then((v) => fail('command should fail'))
+            .catch((e) =>
+                expect(e.message).toEqual('IncorrectParametersException')
+            );
+    });
+
+    test('getEvaluations will trigger callback when promise is resolved', async () => {
+        const responseValue = 'TestResponse';
+        (getEvaluations as any).mockReturnValue(Promise.resolve(responseValue));
+        const mockCallback = jest.fn();
+
+        const cq: CommandQueue = getCommandQueue();
+        await cq.push({
+            c: 'getEvaluations',
+            p: [['feature01'], mockCallback]
+        });
+
+        expect(Orchestration).toHaveBeenCalled();
+        expect(getEvaluations).toHaveBeenCalled();
+        expect(mockCallback).toHaveBeenCalledWith(undefined, responseValue);
+    });
+
+    test('getEvaluations will trigger callback when promise is rejected', async () => {
+        const rejectError = new Error('TestError');
+        (getEvaluations as any).mockImplementation(
+            () =>
+                new Promise(() => {
+                    throw rejectError;
+                })
+        );
+        const mockCallback = jest.fn();
+
+        const cq: CommandQueue = getCommandQueue();
+        await cq.push({
+            c: 'getEvaluations',
+            p: [['feature01'], mockCallback]
+        });
+
+        expect(Orchestration).toHaveBeenCalled();
+        expect(getEvaluations).toHaveBeenCalled();
+        await new Promise((r) => setTimeout(r, 500));
+        expect(mockCallback).toHaveBeenCalledWith(rejectError, undefined);
+    });
+
     test('when function is unknown, UnsupportedOperationException is thrown', async () => {
         const cq: CommandQueue = getCommandQueue();
         await cq
             .push({
                 c: 'badCommand',
-                p: undefined
+                p: []
             })
             .then((v) => fail('command should fail'))
             .catch((e) =>
@@ -332,7 +397,7 @@ describe('CommandQueue tests', () => {
         await cq.init({ ...initArgsWithAppName });
         const result = await cq.push({
             c: 'disable',
-            p: undefined
+            p: []
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(disable).toHaveBeenCalled();
@@ -349,13 +414,15 @@ describe('CommandQueue tests', () => {
         await commandQueue.init({ ...initArgsWithAppName });
         await commandQueue.push({
             c: 'recordEvent',
-            p: {
-                type: 'my_custom_event',
-                data: {
-                    version: 1.0,
-                    field1: { subfield1: 'subfield value' }
+            p: [
+                {
+                    type: 'my_custom_event',
+                    data: {
+                        version: 1.0,
+                        field1: { subfield1: 'subfield value' }
+                    }
                 }
-            }
+            ]
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(recordEvent).toHaveBeenCalled();
@@ -371,7 +438,7 @@ describe('CommandQueue tests', () => {
         return expect(
             commandQueue.push({
                 c: 'recordEvent',
-                p: {}
+                p: [{}]
             })
         ).rejects.toEqual(new Error('IncorrectParametersException'));
     });
@@ -382,10 +449,12 @@ describe('CommandQueue tests', () => {
         return expect(
             commandQueue.push({
                 c: 'recordEvent',
-                p: {
-                    event_type: { is_string: 'false' },
-                    event_data: { is_string: 'false' }
-                }
+                p: [
+                    {
+                        event_type: { is_string: 'false' },
+                        event_data: { is_string: 'false' }
+                    }
+                ]
             })
         ).rejects.toEqual(new Error('IncorrectParametersException'));
     });
@@ -396,10 +465,12 @@ describe('CommandQueue tests', () => {
         return expect(
             commandQueue.push({
                 c: 'recordEvent',
-                p: {
-                    event_type: 'custom_event_type',
-                    event_data: 'Not an object'
-                }
+                p: [
+                    {
+                        event_type: 'custom_event_type',
+                        event_data: 'Not an object'
+                    }
+                ]
             })
         ).rejects.toEqual(new Error('IncorrectParametersException'));
     });
@@ -410,7 +481,7 @@ describe('CommandQueue tests', () => {
         return expect(
             commandQueue.push({
                 c: 'recordEvent',
-                p: 'not object'
+                p: ['not object']
             })
         ).rejects.toEqual(new Error('IncorrectParametersException'));
     });
