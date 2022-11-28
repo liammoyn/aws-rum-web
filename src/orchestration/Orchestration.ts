@@ -14,7 +14,11 @@ import {
     JS_ERROR_EVENT_PLUGIN_ID
 } from '../plugins/event-plugins/JsErrorPlugin';
 import { EventCache } from '../event-cache/EventCache';
-import { ClientBuilder, Dispatch } from '../dispatch/Dispatch';
+import {
+    ClientBuilder,
+    Dispatch,
+    EvidentlyClientBuilder
+} from '../dispatch/Dispatch';
 import { CredentialProvider, Credentials } from '@aws-sdk/types';
 import { NavigationPlugin } from '../plugins/event-plugins/NavigationPlugin';
 import { ResourcePlugin } from '../plugins/event-plugins/ResourcePlugin';
@@ -81,6 +85,8 @@ export type PartialConfig = {
     endpoint?: string;
     eventCacheSize?: number;
     eventPluginsToLoad?: Plugin[];
+    evidentlyClientBuilder?: EvidentlyClientBuilder;
+    evidentlyConfig?: PartialEvidentlyConfig;
     guestRoleArn?: string;
     identityPoolId?: string;
     pageIdFormat?: PageIdFormat;
@@ -109,7 +115,6 @@ export type PartialConfig = {
     telemetries?: Telemetry[];
     useBeacon?: boolean;
     userIdRetentionDays?: number;
-    evidentlyConfig?: PartialEvidentlyConfig;
 };
 
 export const defaultCookieAttributes = (): CookieAttributes => {
@@ -122,7 +127,7 @@ export const defaultCookieAttributes = (): CookieAttributes => {
     };
 };
 
-const defaultEvidentlyConfig = (project: string): EvidentlyConfig => {
+const defaultEvidentlyConfig = (project?: string): EvidentlyConfig => {
     return {
         project,
         endpoint: new URL(DEFAULT_EVIDENTLY_ENDPOINT)
@@ -142,6 +147,7 @@ export const defaultConfig = (cookieAttributes: CookieAttributes): Config => {
         endpointUrl: new URL(DEFAULT_ENDPOINT),
         eventCacheSize: 200,
         eventPluginsToLoad: [],
+        evidentlyConfig: defaultEvidentlyConfig(),
         pageIdFormat: PageIdFormatEnum.Path,
         pagesToExclude: [],
         pagesToInclude: [/.*/],
@@ -182,6 +188,8 @@ export type Config = {
     endpointUrl: URL;
     eventCacheSize: number;
     eventPluginsToLoad: Plugin[];
+    evidentlyClientBuilder?: EvidentlyClientBuilder;
+    evidentlyConfig: EvidentlyConfig;
     /*
      * We must remember the fetch function before the HttpFetch plugin
      * overwrites it via monkey patch. We will use the original fetch function
@@ -207,7 +215,6 @@ export type Config = {
     telemetries: Telemetry[];
     useBeacon: boolean;
     userIdRetentionDays: number;
-    evidentlyConfig?: EvidentlyConfig;
 };
 
 /**
@@ -222,7 +229,7 @@ export class Orchestration {
     private eventCache: EventCache;
     private dispatchManager: Dispatch;
     private config: Config;
-    private evidentlyManager?: EvidentlyManager;
+    private evidentlyManager: EvidentlyManager;
 
     /**
      * Instantiate the CloudWatch RUM web client and begin monitoring the
@@ -277,14 +284,10 @@ export class Orchestration {
         // code.
         this.config.endpointUrl = new URL(this.config.endpoint);
 
-        if (partialConfig.evidentlyConfig) {
-            this.config.evidentlyConfig = {
-                ...defaultEvidentlyConfig(
-                    partialConfig.evidentlyConfig.project
-                ),
-                ...partialConfig.evidentlyConfig
-            };
-        }
+        this.config.evidentlyConfig = {
+            ...defaultEvidentlyConfig(partialConfig.evidentlyConfig?.project),
+            ...partialConfig.evidentlyConfig
+        };
 
         this.eventCache = this.initEventCache(
             applicationId,
@@ -419,60 +422,38 @@ export class Orchestration {
         this.eventCache.recordEvent(eventType, eventData);
     }
 
+    /**
+     * Loads evaluations for a given list of features using the provided user context and ID.
+     *
+     * @param request An object with the user indentification and context information and a list of requested features.
+     */
     public loadEvaluations(request: EvidentlyRequest) {
         if (request.features.length > MAX_EVIDENTLY_FEATURES_PER_EVENT) {
-            return Promise.reject(
-                Error(
-                    `Can only request up to ${MAX_EVIDENTLY_FEATURES_PER_EVENT} features at a time`
-                )
+            throw new Error(
+                `Can only request up to ${MAX_EVIDENTLY_FEATURES_PER_EVENT} features at a time`
             );
         }
-        this.evidentlyManager?.loadEvaluations(request);
-    }
-
-    public getEvaluations(feautres: string[]): Promise<EvaluationResults> {
-        const promise = this.evidentlyManager?.getEvaluations(feautres);
-        if (promise) {
-            return promise;
-        } else {
-            throw Error('Evidently not enabled');
-        }
+        this.evidentlyManager.loadEvaluations(request);
     }
 
     /**
-     * Returns an evaluation for the given evidently features
+     * Returns evaluations for each passed feature, if they have been previously loaded. Also adds those evaluations to the session attributes.
      *
-     * @param request A request specifying Evidently features and the user context they should be evaluated for
-     * @returns A promise containing a map from Evidently feature to the given user evaluation
+     * @param feautres The list of features to return evaluations for.
+     * @returns A map from feature name to its given evaluation.
      */
-    // public evaluateFeature(
-    //     request: EvidentlyRequest
-    // ): Promise<EvaluationResults> {
-    //     if (request.features.length > MAX_EVIDENTLY_FEATURES_PER_EVENT) {
-    //         return Promise.reject(
-    //             Error(
-    //                 `Can only request up to ${MAX_EVIDENTLY_FEATURES_PER_EVENT} features at a time`
-    //             )
-    //         );
-    //     }
-    //     const promise = this.evidentlyManager?.evaluateFeature(request);
-    //     if (promise) {
-    //         return promise;
-    //     } else {
-    //         throw Error('Evidently not enabled');
-    //     }
-    // }
+    public async getEvaluations(
+        feautres: string[]
+    ): Promise<EvaluationResults> {
+        return await this.evidentlyManager.getEvaluations(feautres);
+    }
 
-    private initEvidently(config: Config): EvidentlyManager | undefined {
-        if (config.evidentlyConfig) {
-            return new EvidentlyManager(
-                config,
-                this.eventCache,
-                this.dispatchManager
-            );
-        } else {
-            return undefined;
-        }
+    private initEvidently(config: Config): EvidentlyManager {
+        return new EvidentlyManager(
+            config,
+            this.eventCache,
+            this.dispatchManager
+        );
     }
 
     private initEventCache(

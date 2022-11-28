@@ -3,6 +3,7 @@ import { EventCache } from '../event-cache/EventCache';
 import { DataPlaneClient } from './DataPlaneClient';
 import { BeaconHttpHandler } from './BeaconHttpHandler';
 import { FetchHttpHandler } from './FetchHttpHandler';
+import { EvidentlyClient } from './EvidentlyClient';
 import { PutRumEventsRequest } from './dataplane';
 import { Config } from '../orchestration/Orchestration';
 import { v4 } from 'uuid';
@@ -32,6 +33,13 @@ export type ClientBuilder = (
     credentials: CredentialProvider | Credentials | undefined
 ) => DataPlaneClient;
 
+export type EvidentlyClientBuilder = (
+    endpoint: URL,
+    region: string,
+    credentials: CredentialProvider | Credentials | undefined,
+    project?: string
+) => EvidentlyClientInterface;
+
 export class Dispatch {
     private region: string;
     private endpoint: URL;
@@ -41,6 +49,7 @@ export class Dispatch {
     private enabled: boolean;
     private dispatchTimerId: number | undefined;
     private buildClient: ClientBuilder;
+    private buildEvidentlyClient: EvidentlyClientBuilder;
     private config: Config;
 
     constructor(
@@ -54,6 +63,8 @@ export class Dispatch {
         this.eventCache = eventCache;
         this.enabled = true;
         this.buildClient = config.clientBuilder || this.defaultClientBuilder;
+        this.buildEvidentlyClient =
+            config.evidentlyClientBuilder || this.defaultEvidentlyClientBuilder;
         this.config = config;
         this.startDispatchTimer();
         if (config.signing) {
@@ -71,13 +82,13 @@ export class Dispatch {
                 }
             };
         } else {
-            const dpClient = this.buildClient(
-                this.endpoint,
+            this.rum = this.buildClient(this.endpoint, this.region, undefined);
+            this.evidently = this.buildEvidentlyClient(
+                this.config.evidentlyConfig.endpoint,
                 this.region,
-                undefined
+                undefined,
+                this.config.evidentlyConfig.project
             );
-            this.rum = dpClient;
-            this.evidently = dpClient;
         }
     }
 
@@ -106,13 +117,17 @@ export class Dispatch {
     public setAwsCredentials(
         credentialProvider: Credentials | CredentialProvider
     ): void {
-        const dpClient = this.buildClient(
+        this.rum = this.buildClient(
             this.endpoint,
             this.region,
             credentialProvider
         );
-        this.rum = dpClient;
-        this.evidently = dpClient;
+        this.evidently = this.buildEvidentlyClient(
+            this.config.evidentlyConfig.endpoint,
+            this.region,
+            credentialProvider,
+            this.config.evidentlyConfig.project
+        );
         if (typeof credentialProvider === 'function') {
             // In case a beacon in the first dispatch, we must pre-fetch credentials into a cookie so there is no delay
             // to fetch credentials while the page is closing.
@@ -282,8 +297,35 @@ export class Dispatch {
             beaconRequestHandler: new BeaconHttpHandler(),
             endpoint,
             region,
+            credentials
+        });
+    };
+
+    /**
+     * The default method for creating Evidently service clients.
+     *
+     * @param endpoint Service endpoint.
+     * @param region  Service region.
+     * @param credentials AWS credentials.
+     * @param project Evidently project.
+     */
+    private defaultEvidentlyClientBuilder: EvidentlyClientBuilder = (
+        endpoint,
+        region,
+        credentials,
+        project
+    ) => {
+        return new EvidentlyClient({
+            fetchRequestHandler: new RetryHttpHandler(
+                new FetchHttpHandler({
+                    fetchFunction: this.config.fetchFunction
+                }),
+                this.config.retries
+            ),
+            endpoint,
+            region,
             credentials,
-            evidentlyConfig: this.config.evidentlyConfig
+            project
         });
     };
 }

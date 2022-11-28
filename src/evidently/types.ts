@@ -6,7 +6,7 @@ export type PartialEvidentlyConfig = {
     endpoint?: URL;
 };
 export type EvidentlyConfig = {
-    project: string;
+    project?: string;
     endpoint: URL;
 };
 export type EvidentlyRequest = {
@@ -26,7 +26,7 @@ export type EvaluationResult = {
     value: VariationValue;
     variation: string;
 };
-export type EvaluationResults = { [featureId: string]: EvaluationResult };
+export type EvaluationResults = { [feature: string]: EvaluationResult };
 
 export type APIEvaluationRequest = {
     entityId: string;

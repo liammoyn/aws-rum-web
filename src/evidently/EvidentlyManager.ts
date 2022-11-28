@@ -11,8 +11,7 @@ import {
     EvidentlyRequest
 } from './types';
 
-// TODO: Replace this with the real value
-export const MAX_EVIDENTLY_FEATURES_PER_EVENT = 15;
+export const MAX_EVIDENTLY_FEATURES_PER_EVENT = 10;
 
 const REQUEST_CACHE_KEY = 'lastRequest';
 const EVALS_CACHE_KEY = 'cachedEvaluations';
@@ -21,6 +20,7 @@ export class EvidentlyManager {
     private eventCache: EventCache;
     private dispatchManager: Dispatch;
     private config: Config;
+    private isEnabled: boolean;
 
     private lastRequest?: EvidentlyRequest;
     private cachedEvaluations: EvaluationResults = {};
@@ -35,38 +35,44 @@ export class EvidentlyManager {
         this.eventCache = eventCache;
         this.dispatchManager = dispatchManager;
         this.config = config;
+        this.isEnabled = config.evidentlyConfig.project !== undefined;
     }
 
     public loadEvaluations(request: EvidentlyRequest) {
-        let neededFeatureIds: string[] = request.features;
+        if (!this.isEnabled) {
+            throw new Error('Evidently is not enabled');
+        }
 
+        let neededFeatureIds: string[] = request.features;
         // Check Cache
         const lastRequest: EvidentlyRequest | undefined = this.getLastRequest();
-        if (lastRequest) {
-            if (
-                lastRequest.entityId === request.entityId &&
-                this.compareContext(lastRequest.context, request.context)
-            ) {
-                // Can reuse cached evaluations
-                const allCachedEvaluations = this.getCachedEvaluations();
+        if (
+            lastRequest &&
+            lastRequest.entityId === request.entityId &&
+            this.contextMatches(lastRequest.context, request.context)
+        ) {
+            // Can reuse cached evaluations
+            const allCachedEvaluations = this.getCachedEvaluations();
 
-                // Remove features that have a cached evaluation
-                neededFeatureIds = neededFeatureIds.filter(
-                    (id) => !allCachedEvaluations[id]
-                );
-            } else {
-                // Request has changed, cached evaluations are now invalid
-                this.clearCachedEvaluations();
-                this.cacheValidCheck++;
-            }
+            // Remove features that have a cached evaluation
+            neededFeatureIds = neededFeatureIds.filter(
+                (id) => !allCachedEvaluations[id]
+            );
+        } else {
+            // Request has changed or no longer exists, cached evaluations are now invalid
+            this.clearCachedEvaluations();
+            this.cacheValidCheck++;
         }
 
         this.updateLastRequest(request);
-        request.features = neededFeatureIds;
+        const apiRequest = {
+            ...request,
+            features: neededFeatureIds
+        };
 
         const apiEvaluationsPromise =
             neededFeatureIds.length > 0
-                ? this.getEvals(request)
+                ? this.fetchAPIEvaluations(apiRequest)
                 : Promise.resolve({});
 
         const savedCacheValidCheck = this.cacheValidCheck;
@@ -80,27 +86,32 @@ export class EvidentlyManager {
         this.eventCache.resetEvidentlyAttributes();
     }
 
-    public getEvaluations(features: string[]): Promise<EvaluationResults> {
+    public async getEvaluations(
+        features: string[]
+    ): Promise<EvaluationResults> {
+        if (!this.isEnabled) {
+            throw new Error('Evidently is not enabled');
+        }
+
         const lastRequest: EvidentlyRequest | undefined = this.getLastRequest();
         if (!lastRequest) {
-            return Promise.reject(
-                `Evaluations for features (${features.join(', ')}) not loaded`
+            throw new Error(
+                `Evaluations for features [${features.join(', ')}] not loaded`
             );
         }
 
         const featureSet = new Set(lastRequest.features);
         const notLoadedFeatures = features.filter((f) => !featureSet.has(f));
         if (notLoadedFeatures.length > 0) {
-            return Promise.reject(
-                `Evaluations for features (${notLoadedFeatures.join(
+            throw new Error(
+                `Evaluations for features [${notLoadedFeatures.join(
                     ', '
-                )}) not loaded`
+                )}] not loaded`
             );
         }
 
-        // If we have evaluations in cache, return them
         const allCachedEvaluations = this.getCachedEvaluations();
-        // If every feature in features is in allCachedEvaluations then filter allCachedEvaluations to only have those features
+        // Get all evaluations in the request that have already been cached
         const requestedEvaluations = Object.fromEntries(
             features
                 .map((feature) => {
@@ -114,30 +125,29 @@ export class EvidentlyManager {
                 .filter((entry) => entry) as [string, EvaluationResult][]
         );
         if (features.length === Object.keys(requestedEvaluations).length) {
+            // We have all evaluations that are being requested, return them
             this.addEvaluationToEvents(requestedEvaluations);
-            return Promise.resolve(requestedEvaluations);
+            return requestedEvaluations;
         }
 
-        // Else:
-        // If we are currently fetching the given features, return promise with results
-        // Otherwise give error
-        return this.lastPromise.then((evals: EvaluationResults) => {
-            const responseEvaluations = Object.fromEntries(
-                features.map((feature) => {
-                    const evaluation =
-                        evals[feature] || allCachedEvaluations[feature];
-                    if (evaluation) {
-                        return [feature, evaluation];
-                    } else {
-                        throw Error(
-                            `Evaluations for feature (${feature}) was not loaded`
-                        );
-                    }
-                })
-            );
-            this.addEvaluationToEvents(responseEvaluations);
-            return responseEvaluations;
-        });
+        // If we are currently fetching some of the requested evaluations, return a promise with results
+        const apiEvaluations: EvaluationResults = await this.lastPromise;
+
+        const responseEvaluations = Object.fromEntries(
+            features.map((feature) => {
+                const evaluation =
+                    apiEvaluations[feature] || allCachedEvaluations[feature];
+                if (evaluation) {
+                    return [feature, evaluation];
+                } else {
+                    throw new Error(
+                        `Evaluation for feature (${feature}) was not loaded`
+                    );
+                }
+            })
+        );
+        this.addEvaluationToEvents(responseEvaluations);
+        return responseEvaluations;
     }
 
     private getCachedEvaluations(): EvaluationResults {
@@ -203,7 +213,7 @@ export class EvidentlyManager {
         }
     }
 
-    private compareContext(c1?: ContextType, c2?: ContextType): boolean {
+    private contextMatches(c1?: ContextType, c2?: ContextType): boolean {
         // Note: Will return false if context has the same values but in a different order,
         //  we ignore this edge case to avoid complex equality checking
         return JSON.stringify(c1 || {}) === JSON.stringify(c2 || {});
@@ -220,19 +230,17 @@ export class EvidentlyManager {
         this.eventCache.addEvidentlyAttributes(evidentlySessionAttributes);
     }
 
-    private getEntityId(suppliedEntityId?: string): string {
-        if (!suppliedEntityId) {
-            const userDetails = this.eventCache.getUserDetails();
-            return (userDetails.userId === NIL_UUID
-                ? userDetails.sessionId
-                : userDetails.userId) as string;
-        } else {
-            return suppliedEntityId;
-        }
+    private getDefaultEntityId(): string {
+        const userDetails = this.eventCache.getUserDetails();
+        return (userDetails.userId === NIL_UUID
+            ? userDetails.sessionId
+            : userDetails.userId) as string;
     }
 
-    private getEvals(request: EvidentlyRequest): Promise<EvaluationResults> {
-        const entityId = this.getEntityId(request.entityId);
+    private async fetchAPIEvaluations(
+        request: EvidentlyRequest
+    ): Promise<EvaluationResults> {
+        const entityId = request.entityId || this.getDefaultEntityId();
         const context = request.context
             ? JSON.stringify(request.context)
             : undefined;
@@ -244,27 +252,26 @@ export class EvidentlyManager {
             }))
         };
 
-        return this.dispatchManager
-            .dispatchEvaluateFeature(apiRequest)
-            .then((httpResponse) => {
-                return new Response(httpResponse?.response.body).json();
-            })
-            .then((evaluations: BatchEvaluateFeatureResult) => {
-                return evaluations.results.reduce(
-                    (acc: EvaluationResults, cur) => {
-                        const evaluation: EvaluationResult = {
-                            feature: cur.feature.substring(
-                                cur.feature.lastIndexOf('/') + 1
-                            ),
-                            reason: cur.reason,
-                            value: cur.value,
-                            variation: cur.variation
-                        };
-                        return { ...acc, [evaluation.feature]: evaluation };
-                    },
-                    {}
-                );
-            });
+        const httpResponse = await this.dispatchManager.dispatchEvaluateFeature(
+            apiRequest
+        );
+
+        const evaluations: BatchEvaluateFeatureResult = await new Response(
+            httpResponse?.response.body
+        ).json();
+
+        return evaluations.results.reduce((acc: EvaluationResults, cur) => {
+            const evaluation: EvaluationResult = {
+                // Features can be returned as ARNs, only keep the feature name
+                feature: cur.feature.substring(
+                    cur.feature.lastIndexOf('/') + 1
+                ),
+                reason: cur.reason,
+                value: cur.value,
+                variation: cur.variation
+            };
+            return { ...acc, [evaluation.feature]: evaluation };
+        }, {});
     }
 
     private useSessionStorage() {
