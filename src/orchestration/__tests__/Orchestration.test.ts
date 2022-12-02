@@ -50,12 +50,12 @@ jest.mock('../../plugins/PluginManager', () => ({
     }))
 }));
 
-const loadEvaluations = jest.fn();
-const getEvaluations = jest.fn();
+const initializeFeatures = jest.fn();
+const evaluateFeature = jest.fn();
 jest.mock('../../evidently/EvidentlyManager', () => ({
     EvidentlyManager: jest.fn().mockImplementation(() => ({
-        loadEvaluations,
-        getEvaluations
+        initializeFeatures,
+        evaluateFeature
     }))
 }));
 
@@ -498,25 +498,25 @@ describe('Orchestration tests', () => {
         expect(actual).toEqual(expected);
     });
 
-    test('when loadEvaluations is called then EvidentlyManager.loadEvaluations is called', async () => {
+    test('when initializeFeatures is called then EvidentlyManager.initializeFeatures is called', async () => {
         // Init
         const orchestration = new Orchestration('a', 'c', 'us-east-1', {});
         const featureList = Array.from({ length: 5 }, (_, i) => `feature${i}`);
         const expected = { features: featureList };
 
-        orchestration.loadEvaluations(expected);
-        expect(loadEvaluations).toHaveBeenCalledTimes(1);
-        const actual = loadEvaluations.mock.calls[0][0];
+        orchestration.initializeFeatures(expected);
+        expect(initializeFeatures).toHaveBeenCalledTimes(1);
+        const actual = initializeFeatures.mock.calls[0][0];
         expect(actual).toEqual(expected);
     });
 
-    test('when getEvaluations is called then EvidentlyManager.getEvaluations is called', async () => {
+    test('when evaluateFeature is called then EvidentlyManager.evaluateFeature is called', async () => {
         const orchestration = new Orchestration('a', 'c', 'us-east-1', {});
-        const expected = ['feature01'];
+        const expected = 'feature01';
 
-        orchestration.getEvaluations(expected);
-        expect(getEvaluations).toHaveBeenCalledTimes(1);
-        const actual = getEvaluations.mock.calls[0][0];
+        orchestration.evaluateFeature(expected);
+        expect(evaluateFeature).toHaveBeenCalledTimes(1);
+        const actual = evaluateFeature.mock.calls[0][0];
         expect(actual).toEqual(expected);
     });
 });

@@ -6,11 +6,10 @@ import {
     DEFAULT_EVIDENTLY_CONFIG
 } from '../../test-utils/test-utils';
 import {
-    ClientEvaluationResult,
-    ClientEvaluationResults,
-    EvidentlyRequest
+    EvaluateFeatureResult,
+    EvaluationResults,
+    InitializeFeaturesRequest
 } from '../types';
-import { Config } from '../../orchestration/Orchestration';
 
 const dispatchBatchEvaluateFeature = jest.fn();
 
@@ -32,29 +31,30 @@ jest.mock('../../event-cache/EventCache', () => ({
     }))
 }));
 
-const featureList = ['feature01', 'feature02'];
-const evidentlyRequest: EvidentlyRequest = {
+const feature01 = 'feature01';
+const feature02 = 'feature02';
+const evidentlyRequest: InitializeFeaturesRequest = {
     entityId: '1234',
     context: { color: 'red' },
-    features: featureList
+    features: [feature01, feature02]
 };
-const feature01Result: ClientEvaluationResult = {
+const feature01Result: EvaluateFeatureResult = {
     feature: 'feature01',
     reason: 'DEFAULT',
     value: { boolValue: true },
     variation: 'variation01'
 };
-const feature02Result: ClientEvaluationResult = {
+const feature02Result: EvaluateFeatureResult = {
     feature: 'feature02',
     reason: 'DEFAULT',
     value: { boolValue: false },
     variation: 'variation02'
 };
-const evaluationResults: ClientEvaluationResults = {
+const evaluationResults: EvaluationResults = {
     feature01: feature01Result,
     feature02: feature02Result
 };
-const feature03Result: ClientEvaluationResult = {
+const feature03Result: EvaluateFeatureResult = {
     feature: 'feature03',
     reason: 'DEFAULT',
     value: { longValue: 10 },
@@ -63,9 +63,7 @@ const feature03Result: ClientEvaluationResult = {
 
 const notEnabledErrorText = 'Evidently is not enabled';
 const tooManyFeaturesErrorText = 'Can only request up to 10 features at a time';
-const featuresNotLoadedErrorText = (featureList) =>
-    `Evaluations for features [${featureList.join(', ')}] not loaded`;
-const featureNotLoadedErrorText = (feature) =>
+const featureNotLoadedErrorText = (feature: string) =>
     `Evaluation for feature [${feature}] not loaded`;
 
 describe('EvidentlyManager tests', () => {
@@ -73,31 +71,37 @@ describe('EvidentlyManager tests', () => {
         jest.clearAllMocks();
     });
 
-    test('When Evidently is not enabled then loadEvaluations throws an error', async () => {
+    test('When Evidently is not enabled then initializeFeatures throws an error', async () => {
         const manager = new EvidentlyManager(
             DEFAULT_CONFIG,
             createDefaultEventCache(),
             createDefaultDispatch()
         );
 
-        expect(() => manager.loadEvaluations(evidentlyRequest)).toThrow(
+        expect(() => manager.initializeFeatures(evidentlyRequest)).toThrow(
             notEnabledErrorText
         );
     });
 
-    test('When Evidently is not enabled then getEvaluations rejects promise', async () => {
+    test('When Evidently is not enabled then evaluateFeature rejects promise', async () => {
         const manager = new EvidentlyManager(
             DEFAULT_CONFIG,
             createDefaultEventCache(),
             createDefaultDispatch()
         );
 
-        await expect(() => manager.getEvaluations(featureList)).rejects.toEqual(
+        await expect(() => manager.evaluateFeature(feature01)).rejects.toEqual(
             new Error(notEnabledErrorText)
         );
     });
 
-    test('When given too many features, loadEvaluations throws an error', async () => {
+    test('When given too many features, initializeFeatures throws an error', async () => {
+        const fetchAPIEvaluations = jest.spyOn(
+            EvidentlyManager.prototype as any,
+            'fetchAPIEvaluations'
+        );
+        fetchAPIEvaluations.mockImplementation(() => Promise.resolve({}));
+
         const manager = new EvidentlyManager(
             DEFAULT_EVIDENTLY_CONFIG,
             createDefaultEventCache(),
@@ -111,20 +115,20 @@ describe('EvidentlyManager tests', () => {
         );
 
         expect(() =>
-            manager.loadEvaluations({
+            manager.initializeFeatures({
                 ...evidentlyRequest,
                 features: featureList
             })
         ).not.toThrow(tooManyFeaturesErrorText);
         expect(() =>
-            manager.loadEvaluations({
+            manager.initializeFeatures({
                 ...evidentlyRequest,
                 features: badFeatureList
             })
         ).toThrow(tooManyFeaturesErrorText);
     });
 
-    test('When loadEvaluations called with null last request, cached evaluations are cleared', async () => {
+    test('When initializeFeatures called with null last request, cached evaluations are cleared', async () => {
         const getLastRequest = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -135,6 +139,11 @@ describe('EvidentlyManager tests', () => {
             'clearCachedEvaluations'
         );
         clearCachedEvaluations.mockImplementation(() => undefined);
+        const fetchAPIEvaluations = jest.spyOn(
+            EvidentlyManager.prototype as any,
+            'fetchAPIEvaluations'
+        );
+        fetchAPIEvaluations.mockImplementation(() => Promise.resolve({}));
 
         const manager = new EvidentlyManager(
             DEFAULT_EVIDENTLY_CONFIG,
@@ -142,12 +151,12 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        manager.loadEvaluations(evidentlyRequest);
+        manager.initializeFeatures(evidentlyRequest);
         expect(getLastRequest).toHaveBeenCalled();
         expect(clearCachedEvaluations).toHaveBeenCalled();
     });
 
-    test('When loadEvaluations called with different entity ID, cached evaluations are cleared', async () => {
+    test('When initializeFeatures called with different entity ID, cached evaluations are cleared', async () => {
         const getLastRequest = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -161,6 +170,11 @@ describe('EvidentlyManager tests', () => {
             'clearCachedEvaluations'
         );
         clearCachedEvaluations.mockImplementation(() => undefined);
+        const fetchAPIEvaluations = jest.spyOn(
+            EvidentlyManager.prototype as any,
+            'fetchAPIEvaluations'
+        );
+        fetchAPIEvaluations.mockImplementation(() => Promise.resolve({}));
 
         const manager = new EvidentlyManager(
             DEFAULT_EVIDENTLY_CONFIG,
@@ -168,12 +182,12 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        manager.loadEvaluations(evidentlyRequest);
+        manager.initializeFeatures(evidentlyRequest);
         expect(getLastRequest).toHaveBeenCalled();
         expect(clearCachedEvaluations).toHaveBeenCalled();
     });
 
-    test('When loadEvaluations called with different context, cached evaluations are cleared', async () => {
+    test('When initializeFeatures called with different context, cached evaluations are cleared', async () => {
         const getLastRequest = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -187,6 +201,11 @@ describe('EvidentlyManager tests', () => {
             'clearCachedEvaluations'
         );
         clearCachedEvaluations.mockImplementation(() => undefined);
+        const fetchAPIEvaluations = jest.spyOn(
+            EvidentlyManager.prototype as any,
+            'fetchAPIEvaluations'
+        );
+        fetchAPIEvaluations.mockImplementation(() => Promise.resolve({}));
 
         const manager = new EvidentlyManager(
             DEFAULT_EVIDENTLY_CONFIG,
@@ -194,12 +213,12 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        manager.loadEvaluations(evidentlyRequest);
+        manager.initializeFeatures(evidentlyRequest);
         expect(getLastRequest).toHaveBeenCalled();
         expect(clearCachedEvaluations).toHaveBeenCalled();
     });
 
-    test('When loadEvaluations called with cached features, no API request is made', async () => {
+    test('When initializeFeatures called with cached features, no API request is made', async () => {
         const getLastRequest = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -219,7 +238,7 @@ describe('EvidentlyManager tests', () => {
             EvidentlyManager.prototype as any,
             'fetchAPIEvaluations'
         );
-        fetchAPIEvaluations.mockImplementation(() => undefined);
+        fetchAPIEvaluations.mockImplementation(() => Promise.resolve({}));
 
         const manager = new EvidentlyManager(
             DEFAULT_EVIDENTLY_CONFIG,
@@ -227,14 +246,14 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        manager.loadEvaluations(evidentlyRequest);
+        manager.initializeFeatures(evidentlyRequest);
         expect(getLastRequest).toHaveBeenCalled();
         expect(getCachedEvaluations).toHaveBeenCalled();
         expect(clearCachedEvaluations).not.toHaveBeenCalled();
         expect(fetchAPIEvaluations).not.toHaveBeenCalled();
     });
 
-    test('When loadEvaluations called with uncached features, API request is made', async () => {
+    test('When initializeFeatures called with uncached features, API request is made', async () => {
         const getLastRequest = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -259,7 +278,7 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        manager.loadEvaluations(evidentlyRequest);
+        manager.initializeFeatures(evidentlyRequest);
         expect(getLastRequest).toHaveBeenCalled();
         expect(getCachedEvaluations).toHaveBeenCalled();
         expect(fetchAPIEvaluations).toHaveBeenCalled();
@@ -267,7 +286,7 @@ describe('EvidentlyManager tests', () => {
         expect(apiRequest).toEqual(evidentlyRequest);
     });
 
-    test('When loadEvaluations called with some cached features, API request is made with only needed features', async () => {
+    test('When initializeFeatures called with some cached features, API request is made with only needed features', async () => {
         const getLastRequest = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -294,7 +313,7 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        manager.loadEvaluations(evidentlyRequest);
+        manager.initializeFeatures(evidentlyRequest);
         expect(getLastRequest).toHaveBeenCalled();
         expect(getCachedEvaluations).toHaveBeenCalled();
         expect(fetchAPIEvaluations).toHaveBeenCalled();
@@ -305,7 +324,7 @@ describe('EvidentlyManager tests', () => {
         });
     });
 
-    test('When getEvaluations is called without a lastRequest, then an error is thrown', async () => {
+    test('When evaluateFeature is called without a lastRequest, then an error is thrown', async () => {
         const getLastRequestMock = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -318,19 +337,19 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        await expect(() => manager.getEvaluations(featureList)).rejects.toEqual(
-            new Error(featuresNotLoadedErrorText(featureList))
+        await expect(() => manager.evaluateFeature(feature01)).rejects.toEqual(
+            new Error(featureNotLoadedErrorText(feature01))
         );
         expect(getLastRequestMock).toHaveBeenCalled();
     });
 
-    test('When getEvaluations is called with features not loaded in last request, then an error is thrown', async () => {
+    test('When evaluateFeature is called with features not loaded in last request, then an error is thrown', async () => {
         const getLastRequestMock = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
         );
         getLastRequestMock.mockImplementation(() => ({
-            features: ['featureXX']
+            features: [feature02]
         }));
 
         const manager = new EvidentlyManager(
@@ -339,13 +358,13 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        await expect(() => manager.getEvaluations(featureList)).rejects.toEqual(
-            new Error(featuresNotLoadedErrorText(featureList))
+        await expect(() => manager.evaluateFeature(feature01)).rejects.toEqual(
+            new Error(featureNotLoadedErrorText(feature01))
         );
         expect(getLastRequestMock).toHaveBeenCalled();
     });
 
-    test('When getEvaluations is called with same features in cache, then features returned', async () => {
+    test('When evaluateFeature is called with same features in cache, then features returned', async () => {
         const getLastRequestMock = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -363,13 +382,13 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        const actualEvaluations = await manager.getEvaluations(featureList);
-        expect(actualEvaluations).toEqual(evaluationResults);
+        const actualEvaluations = await manager.evaluateFeature(feature01);
+        expect(actualEvaluations).toEqual(evaluationResults[feature01]);
         expect(getLastRequestMock).toHaveBeenCalled();
         expect(getCachedEvaluations).toHaveBeenCalled();
     });
 
-    test('When getEvaluations is called with extra features in cache, then features returned', async () => {
+    test('When evaluateFeature is called with extra features in cache, then feature returned', async () => {
         const getLastRequestMock = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -390,13 +409,13 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        const actualEvaluations = await manager.getEvaluations(featureList);
-        expect(actualEvaluations).toEqual(evaluationResults);
+        const actualEvaluations = await manager.evaluateFeature(feature02);
+        expect(actualEvaluations).toEqual(evaluationResults[feature02]);
         expect(getLastRequestMock).toHaveBeenCalled();
         expect(getCachedEvaluations).toHaveBeenCalled();
     });
 
-    test('When getEvaluations with API request getting same features, then features returned', async () => {
+    test('When evaluateFeature with API request getting same features, then features returned', async () => {
         const getLastRequestMock = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -421,14 +440,14 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        const actualEvaluations = await manager.getEvaluations(featureList);
-        expect(actualEvaluations).toEqual(evaluationResults);
+        const actualEvaluations = await manager.evaluateFeature(feature01);
+        expect(actualEvaluations).toEqual(evaluationResults[feature01]);
         expect(getLastRequestMock).toHaveBeenCalled();
         expect(getCachedEvaluations).toHaveBeenCalled();
         expect(getLastPromise).toHaveBeenCalled();
     });
 
-    test('When getEvaluations with rejected API request, then promise is rejected', async () => {
+    test('When evaluateFeature with rejected API request, then promise is rejected', async () => {
         const getLastRequestMock = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -453,7 +472,7 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        await expect(() => manager.getEvaluations(featureList)).rejects.toEqual(
+        await expect(() => manager.evaluateFeature(feature01)).rejects.toEqual(
             new Error('MockError')
         );
         expect(getLastRequestMock).toHaveBeenCalled();
@@ -461,7 +480,7 @@ describe('EvidentlyManager tests', () => {
         expect(getLastPromise).toHaveBeenCalled();
     });
 
-    test('When getEvaluations with API request missing a feature, then promise is rejected', async () => {
+    test('When evaluateFeature with API request missing a feature, then promise is rejected', async () => {
         const getLastRequestMock = jest.spyOn(
             EvidentlyManager.prototype as any,
             'getLastRequest'
@@ -486,43 +505,9 @@ describe('EvidentlyManager tests', () => {
             createDefaultDispatch()
         );
 
-        await expect(() => manager.getEvaluations(featureList)).rejects.toEqual(
+        await expect(() => manager.evaluateFeature(feature02)).rejects.toEqual(
             new Error(featureNotLoadedErrorText('feature02'))
         );
-        expect(getLastRequestMock).toHaveBeenCalled();
-        expect(getCachedEvaluations).toHaveBeenCalled();
-        expect(getLastPromise).toHaveBeenCalled();
-    });
-
-    test('When getEvaluations with cached feature and API feature, then features returned', async () => {
-        const getLastRequestMock = jest.spyOn(
-            EvidentlyManager.prototype as any,
-            'getLastRequest'
-        );
-        getLastRequestMock.mockImplementation(() => evidentlyRequest);
-        const getCachedEvaluations = jest.spyOn(
-            EvidentlyManager.prototype as any,
-            'getCachedEvaluations'
-        );
-        getCachedEvaluations.mockImplementation(() => ({
-            feature01: feature01Result
-        }));
-        const getLastPromise = jest.spyOn(
-            EvidentlyManager.prototype as any,
-            'getLastPromise'
-        );
-        getLastPromise.mockImplementation(() =>
-            Promise.resolve({ feature02: feature02Result })
-        );
-
-        const manager = new EvidentlyManager(
-            DEFAULT_EVIDENTLY_CONFIG,
-            createDefaultEventCache(),
-            createDefaultDispatch()
-        );
-
-        const actualEvaluations = await manager.getEvaluations(featureList);
-        expect(actualEvaluations).toEqual(evaluationResults);
         expect(getLastRequestMock).toHaveBeenCalled();
         expect(getCachedEvaluations).toHaveBeenCalled();
         expect(getLastPromise).toHaveBeenCalled();

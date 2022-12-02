@@ -1,6 +1,6 @@
 export type EvaluationCallback = (
     err?: Error,
-    res?: ClientEvaluationResults
+    res?: EvaluateFeatureResult
 ) => void;
 
 export type ContextType = { [k: string]: any };
@@ -13,25 +13,25 @@ export type EvidentlyConfig = {
     endpoint: string;
     endpointUrl: URL;
 };
-export type EvidentlyRequest = {
+export type InitializeFeaturesRequest = {
     features: string[];
     entityId?: string;
     context?: ContextType;
 };
-type VariationValue = {
+type VariableValue = {
     boolValue?: boolean;
     doubleValue?: number;
     longValue?: number;
     stringValue?: string;
 };
-export type ClientEvaluationResult = {
+export type EvaluateFeatureResult = {
     feature: string;
     reason: string;
-    value: VariationValue;
+    value: VariableValue;
     variation: string;
 };
-export type ClientEvaluationResults = {
-    [feature: string]: ClientEvaluationResult;
+export type EvaluationResults = {
+    [feature: string]: EvaluateFeatureResult;
 };
 
 export type EvaluationRequest = {
@@ -43,15 +43,15 @@ export type BatchEvaluateFeatureRequest = {
     requests: EvaluationRequest[];
 };
 
-export type EvaluationResult = {
+export type BatchEvaluationResult = {
     details: string;
     entityId: string;
     feature: string;
     project: string;
     reason: string;
-    value: VariationValue;
+    value: VariableValue;
     variation: string;
 };
 export type BatchEvaluateFeatureResult = {
-    results: EvaluationResult[];
+    results: BatchEvaluationResult[];
 };

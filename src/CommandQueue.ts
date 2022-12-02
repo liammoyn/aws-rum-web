@@ -1,10 +1,10 @@
 import { CredentialProvider, Credentials } from '@aws-sdk/types';
 import { Plugin } from 'plugins/Plugin';
-import { EvaluationCallback, EvidentlyRequest } from 'evidently/types';
+import { EvaluationCallback, InitializeFeaturesRequest } from 'evidently/types';
 import { PartialConfig, Orchestration } from './orchestration/Orchestration';
 import { getRemoteConfig } from './remote-config/remote-config';
 
-export type CommandFunction = (...payload: any) => void;
+export type CommandFunction = (payload?: any) => void;
 
 interface CommandFunctions {
     setAwsCredentials: CommandFunction;
@@ -18,14 +18,14 @@ interface CommandFunctions {
     enable: CommandFunction;
     disable: CommandFunction;
     allowCookies: CommandFunction;
-    loadEvaluations: CommandFunction;
-    getEvaluations: CommandFunction;
+    initializeFeatures: CommandFunction;
+    evaluateFeature: CommandFunction;
 }
 
 /**
  * An AWS RUM Client command.
  */
-export type Command = { c: string; p: any[] };
+export type Command = { c: string; p: any };
 
 /**
  * The global configuration object is defined in the loader script, so we cannot trust its types.
@@ -100,21 +100,25 @@ export class CommandQueue {
                 throw new Error('IncorrectParametersException');
             }
         },
-        loadEvaluations: (request: EvidentlyRequest): void => {
-            this.orchestration.loadEvaluations(request);
+        initializeFeatures: (request: InitializeFeaturesRequest): void => {
+            this.orchestration.initializeFeatures(request);
         },
-        getEvaluations: (
-            features: string[],
-            callback: EvaluationCallback
-        ): void => {
-            if (typeof callback === 'function') {
+        evaluateFeature: (request: {
+            feature: string;
+            callback: EvaluationCallback;
+        }): void => {
+            if (
+                typeof request === 'object' &&
+                typeof request.feature === 'string' &&
+                typeof request.callback === 'function'
+            ) {
                 this.orchestration
-                    .getEvaluations(features)
-                    .then((results) => {
-                        callback(undefined, results);
+                    .evaluateFeature(request.feature)
+                    .then((result) => {
+                        request.callback(undefined, result);
                     })
                     .catch((err: Error) => {
-                        callback(err, undefined);
+                        request.callback(err, undefined);
                     });
             } else {
                 throw new Error('IncorrectParametersException');
@@ -151,7 +155,7 @@ export class CommandQueue {
             command.c as keyof CommandFunctions
         ];
         if (commandHandler) {
-            commandHandler(...command.p);
+            commandHandler(command.p);
         } else {
             throw new Error(`CWR: UnsupportedOperationException: ${command.c}`);
         }
@@ -166,7 +170,7 @@ export class CommandQueue {
         );
 
         // Overwrite the global API to use CommandQueue
-        (window as any)[awsRum.n] = (c: string, ...p: any) => {
+        (window as any)[awsRum.n] = (c: string, p: any) => {
             this.push({ c, p });
         };
 

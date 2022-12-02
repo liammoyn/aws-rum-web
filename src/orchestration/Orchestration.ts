@@ -29,9 +29,10 @@ import { PageViewPlugin } from '../plugins/event-plugins/PageViewPlugin';
 import { PageAttributes } from '../sessions/PageManager';
 import { EvidentlyManager } from '../evidently/EvidentlyManager';
 import {
-    ClientEvaluationResults,
+    EvaluateFeatureResult,
+    EvaluationResults,
     EvidentlyConfig,
-    EvidentlyRequest,
+    InitializeFeaturesRequest,
     PartialEvidentlyConfig
 } from '../evidently/types';
 
@@ -428,20 +429,20 @@ export class Orchestration {
      *
      * @param request An object with the user indentification and context information and a list of requested features.
      */
-    public loadEvaluations(request: EvidentlyRequest) {
-        this.evidentlyManager.loadEvaluations(request);
+    public initializeFeatures(request: InitializeFeaturesRequest) {
+        this.evidentlyManager.initializeFeatures(request);
     }
 
     /**
-     * Returns evaluations for each passed feature, if they have been previously loaded. Also adds those evaluations to the session attributes.
+     * Returns evaluations for the passed feature, if is has been previously loaded. Also adds the evaluation to the session attributes.
      *
-     * @param features The list of features to return evaluations for.
+     * @param feature The feature to return evaluation for.
      * @returns A map from feature name to its given evaluation.
      */
-    public async getEvaluations(
-        features: string[]
-    ): Promise<ClientEvaluationResults> {
-        return await this.evidentlyManager.getEvaluations(features);
+    public async evaluateFeature(
+        feature: string
+    ): Promise<EvaluateFeatureResult> {
+        return await this.evidentlyManager.evaluateFeature(feature);
     }
 
     private initEvidently(config: Config): EvidentlyManager {
