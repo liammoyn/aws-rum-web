@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>RUM Evidently Integ Test</title>
+        <script src="./loader_evidently.js"></script>
+        <link
+            rel="icon"
+            type="image/png"
+            href="https://awsmedia.s3.amazonaws.com/favicon.ico"
+        />
+
+        <script>
+            function onInitalizeFeatures() {
+                const command = 'initializeFeatures';
+                const payload = JSON.parse(
+                    document.getElementById('payload').value
+                );
+                /*
+                {
+                    features: string[];
+                    entityId?: string;
+                    context?: ContextType;
+                }
+                */
+                cwr(command, payload);
+            }
+            function onEvaluateFeature() {
+                const command = 'evaluateFeature';
+                const feature = document.getElementById('featureName').value;
+                const callback = (err, res) => {
+                    document.getElementById('callback_error').textContent = err
+                        ? err
+                        : 'undefined';
+                    document.getElementById(
+                        'callback_response'
+                    ).textContent = res ? JSON.stringify(res) : 'undefined';
+                };
+                const payload = { feature, callback };
+                cwr(command, payload);
+            }
+
+            function clearSessionStorage() {
+                try {
+                    sessionStorage.clear();
+                } catch (e) {
+                    // ignore
+                }
+            }
+        </script>
+
+        <style>
+            table {
+                border-collapse: collapse;
+                margin-top: 10px;
+                margin-bottom: 10px;
+            }
+
+            td,
+            th {
+                border: 1px solid black;
+                text-align: left;
+                padding: 8px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <p id="welcome">
+            This application is used for RUM-Evidently integ testing.
+        </p>
+        <input
+            type="button"
+            id="clearSessionStorage"
+            value="Clear Session Storage"
+            onclick="clearSessionStorage()"
+        />
+        <form>
+            <label for="payload">Initialize Features Payload : </label>
+            <textarea id="payload"></textarea><br /><br />
+            <input
+                type="button"
+                id="initializeFeatures"
+                value="Initialize Features"
+                onclick="onInitalizeFeatures()"
+            />
+        </form>
+        <br />
+        <form>
+            <label for="featureName">Evaluate Feature Name : </label>
+            <input type="text" id="featureName" /><br /><br />
+            <input
+                type="button"
+                id="evaluateFeature"
+                value="Evaluate Feature"
+                onclick="onEvaluateFeature()"
+            />
+        </form>
+        <br />
+
+        <span>Initialize Features API</span>
+        <span id="request"></span>
+        <span id="response"></span>
+        <table>
+            <tr>
+                <td>Request URL</td>
+                <td id="request_url"></td>
+            </tr>
+            <tr>
+                <td>Request Header</td>
+                <td id="request_header"></td>
+            </tr>
+            <tr>
+                <td>Request Body</td>
+                <td id="request_body"></td>
+            </tr>
+        </table>
+        <table>
+            <tr>
+                <td>Response Status Code</td>
+                <td id="response_status"></td>
+            </tr>
+            <tr>
+                <td>Response Header</td>
+                <td id="response_header"></td>
+            </tr>
+            <tr>
+                <td>Response Body</td>
+                <td id="response_body"></td>
+            </tr>
+        </table>
+        <br />
+        <span>Evaluate Feature Callback</span>
+        <table>
+            <tr>
+                <td>Error</td>
+                <td id="callback_error"></td>
+            </tr>
+            <tr>
+                <td>Response</td>
+                <td id="callback_response"></td>
+            </tr>
+        </table>
+    </body>
+</html>

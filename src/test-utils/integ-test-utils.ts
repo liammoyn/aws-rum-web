@@ -1,5 +1,6 @@
 import { Selector } from 'testcafe';
 
+export const STATUS_200 = 200;
 export const STATUS_202 = 202;
 export const BUTTON_ID_1 = 'button1';
 export const BUTTON_ID_2 = 'button2';
