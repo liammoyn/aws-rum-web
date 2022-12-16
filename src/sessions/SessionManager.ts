@@ -18,7 +18,7 @@ export const SESSION_START_EVENT_TYPE = 'com.amazon.rum.session_start_event';
 export const RUM_SESSION_START = 'rum_session_start';
 export const RUM_SESSION_EXPIRE = 'rum_session_expire';
 
-const EVIDENTLY_EVALUATION_PREFIX = 'aws:ev:feat:';
+export const EVIDENTLY_EVALUATION_PREFIX = 'aws:ev:';
 
 export type RecordSessionInitEvent = (
     session: Session,
@@ -148,9 +148,15 @@ export class SessionManager {
      * @param evidentlyAttributes object mapping feature names to variation names
      */
     public addEvidentlyAttributes(evidentlyAttributes: EvidentlyAttributes) {
+        const prefixedAttributes = Object.fromEntries(
+            Object.entries(evidentlyAttributes).map(([k, v]) => [
+                EVIDENTLY_EVALUATION_PREFIX + k,
+                v
+            ])
+        );
         this.evidentlyAttributes = {
             ...this.evidentlyAttributes,
-            ...evidentlyAttributes
+            ...prefixedAttributes
         };
     }
 
