@@ -27,7 +27,8 @@ module.exports = merge(common, {
         loader_remote_config: './src/loader/loader-remote-config.js',
         loader_spa: './src/loader/loader-spa.js',
         loader_custom_events: './src/loader/loader-custom-events.js',
-        loader_evidently: './src/loader/loader-evidently.js'
+        loader_evidently: './src/loader/loader-evidently.js',
+        loader_evidently_bugbash: './src/loader/loader-evidently-bugbash.js'
     },
     resolve: {
         extensions: ['.ts', '.js', '.json']
