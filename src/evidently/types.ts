@@ -3,7 +3,6 @@ export type EvaluationCallback = (
     res?: EvaluateFeatureResult
 ) => void;
 
-export type ContextType = { [k: string]: any };
 export type PartialEvidentlyConfig = {
     project: string;
     endpoint?: string;
@@ -16,7 +15,7 @@ export type EvidentlyConfig = {
 export type InitializeFeaturesRequest = {
     features: string[];
     entityId?: string;
-    context?: ContextType;
+    context?: string;
 };
 type VariableValue = {
     boolValue?: boolean;

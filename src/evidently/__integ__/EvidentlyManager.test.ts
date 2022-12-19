@@ -27,9 +27,7 @@ test('When session storage is empty, API call should be made and evaluateFeature
     await t.click(CLEAR_STORAGE_BUTTON);
 
     const entityId = 'user01';
-    const context = {
-        color: 'red'
-    };
+    const context = '{ "color": "red" }';
     const requestBody = {
         features: [feature01, feature02],
         entityId,

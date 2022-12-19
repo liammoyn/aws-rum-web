@@ -35,7 +35,7 @@ const feature01 = 'feature01';
 const feature02 = 'feature02';
 const evidentlyRequest: InitializeFeaturesRequest = {
     entityId: '1234',
-    context: { color: 'red' },
+    context: '{ "color": "red" }',
     features: [feature01, feature02]
 };
 const feature01Result: EvaluateFeatureResult = {

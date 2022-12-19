@@ -5,7 +5,6 @@ import { NIL_UUID } from '../sessions/SessionManager';
 import {
     BatchEvaluateFeatureRequest,
     BatchEvaluateFeatureResult,
-    ContextType,
     EvaluateFeatureResult,
     EvaluationResults,
     InitializeFeaturesRequest
@@ -200,10 +199,10 @@ export class EvidentlyManager {
         }
     }
 
-    private contextMatches(c1?: ContextType, c2?: ContextType): boolean {
+    private contextMatches(c1?: string, c2?: string): boolean {
         // Note: Will return false if context has the same values but in a different order,
         //  we ignore this edge case to avoid complex equality checking
-        return JSON.stringify(c1 || {}) === JSON.stringify(c2 || {});
+        return c1 === c2;
     }
 
     private addEvaluationToEvents(evaluation: EvaluateFeatureResult) {
@@ -226,13 +225,11 @@ export class EvidentlyManager {
         request: InitializeFeaturesRequest
     ): Promise<EvaluationResults> {
         const entityId = request.entityId || this.getDefaultEntityId();
-        const context = request.context
-            ? JSON.stringify(request.context)
-            : undefined;
+        const evaluationContext = request.context;
         const apiRequest: BatchEvaluateFeatureRequest = {
             requests: request.features.map((feature) => ({
                 entityId,
-                evaluationContext: context,
+                evaluationContext,
                 feature
             }))
         };
