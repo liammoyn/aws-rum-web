@@ -18,7 +18,7 @@ export const SESSION_START_EVENT_TYPE = 'com.amazon.rum.session_start_event';
 export const RUM_SESSION_START = 'rum_session_start';
 export const RUM_SESSION_EXPIRE = 'rum_session_expire';
 
-export const EVIDENTLY_EVALUATION_PREFIX = 'aws:ev:';
+export const EVIDENTLY_EVALUATION_PREFIX = 'aws:evidently:';
 
 export type RecordSessionInitEvent = (
     session: Session,
