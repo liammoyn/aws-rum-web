@@ -47,7 +47,7 @@ test('When session storage is empty, API call should be made and evaluateFeature
         .expect(REQUEST_BODY.textContent)
         .contains(entityId)
         .expect(REQUEST_BODY.textContent)
-        .contains(JSON.stringify(JSON.stringify(context)))
+        .contains(JSON.stringify(context))
         .expect(RESPONSE_STATUS.textContent)
         .eql(STATUS_200.toString());
 
