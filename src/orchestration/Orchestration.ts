@@ -36,9 +36,9 @@ import {
     PartialEvidentlyConfig
 } from '../evidently/types';
 
-const DEFAULT_REGION = 'us-west-2';
-const DEFAULT_ENDPOINT = `https://dataplane.rum.${DEFAULT_REGION}.amazonaws.com`;
-const DEFAULT_EVIDENTLY_ENDPOINT = `https://dataplane.evidently.${DEFAULT_REGION}.amazonaws.com`;
+export const DEFAULT_REGION = 'us-west-2';
+export const DEFAULT_ENDPOINT = `https://dataplane.rum.${DEFAULT_REGION}.amazonaws.com`;
+export const DEFAULT_EVIDENTLY_ENDPOINT = `https://dataplane.evidently.${DEFAULT_REGION}.amazonaws.com`;
 
 export enum TelemetryEnum {
     Errors = 'errors',
@@ -126,9 +126,13 @@ export const defaultCookieAttributes = (): CookieAttributes => {
 };
 
 export const defaultEvidentlyConfig = (
-    partialConfig?: PartialEvidentlyConfig
+    partialConfig?: PartialEvidentlyConfig,
+    region?: string
 ): EvidentlyConfig => {
-    const endpoint = partialConfig?.endpoint || DEFAULT_EVIDENTLY_ENDPOINT;
+    const endpointRegion = region || DEFAULT_REGION;
+    const endpoint =
+        partialConfig?.endpoint ||
+        DEFAULT_EVIDENTLY_ENDPOINT.replace(DEFAULT_REGION, endpointRegion);
     return {
         project: partialConfig?.project,
         endpoint,
@@ -287,7 +291,7 @@ export class Orchestration {
         this.config.endpointUrl = new URL(this.config.endpoint);
 
         this.config.evidentlyConfig = {
-            ...defaultEvidentlyConfig(partialConfig.evidentlyConfig),
+            ...defaultEvidentlyConfig(partialConfig.evidentlyConfig, region),
             ...partialConfig.evidentlyConfig
         };
 
