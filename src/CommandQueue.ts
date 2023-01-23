@@ -1,5 +1,10 @@
 import { CredentialProvider, Credentials } from '@aws-sdk/types';
 import { Plugin } from 'plugins/Plugin';
+import {
+    EvaluationCallback,
+    InitializeFeaturesRequest,
+    isValidInitalizeFeaturesRequest
+} from './evidently/types';
 import { PartialConfig, Orchestration } from './orchestration/Orchestration';
 import { getRemoteConfig } from './remote-config/remote-config';
 
@@ -17,6 +22,8 @@ interface CommandFunctions {
     enable: CommandFunction;
     disable: CommandFunction;
     allowCookies: CommandFunction;
+    initializeFeatures: CommandFunction;
+    evaluateFeature: CommandFunction;
 }
 
 /**
@@ -93,6 +100,34 @@ export class CommandQueue {
         allowCookies: (allow: boolean): void => {
             if (typeof allow === 'boolean') {
                 this.orchestration.allowCookies(allow);
+            } else {
+                throw new Error('IncorrectParametersException');
+            }
+        },
+        initializeFeatures: (request: InitializeFeaturesRequest): void => {
+            if (isValidInitalizeFeaturesRequest(request)) {
+                this.orchestration.initializeFeatures(request);
+            } else {
+                throw new Error('IncorrectParametersException');
+            }
+        },
+        evaluateFeature: (request: {
+            feature: string;
+            callback: EvaluationCallback;
+        }): void => {
+            if (
+                typeof request === 'object' &&
+                typeof request.feature === 'string' &&
+                typeof request.callback === 'function'
+            ) {
+                this.orchestration
+                    .evaluateFeature(request.feature)
+                    .then((result) => {
+                        request.callback(undefined, result);
+                    })
+                    .catch((err: Error) => {
+                        request.callback(err, undefined);
+                    });
             } else {
                 throw new Error('IncorrectParametersException');
             }

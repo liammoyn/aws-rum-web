@@ -3,7 +3,8 @@ import { Credentials } from '@aws-sdk/types';
 import {
     Config,
     defaultConfig,
-    defaultCookieAttributes
+    defaultCookieAttributes,
+    defaultEvidentlyConfig
 } from '../orchestration/Orchestration';
 import {
     GetSession,
@@ -17,9 +18,14 @@ import {
     UserDetails
 } from '../dispatch/dataplane';
 import { ReadableStream } from 'web-streams-polyfill';
+import { BatchEvaluateFeatureRequest } from '../evidently/types';
+import { Dispatch } from '../dispatch/Dispatch';
 
 export const AWS_RUM_ENDPOINT = new URL(
     'https://rumservicelambda.us-west-2.amazonaws.com'
+);
+export const AWS_EVIDENTLY_ENDPOINT = new URL(
+    'https://dataplane.evidently.us-west-2.amazonaws.com'
 );
 export const AWS_RUM_REGION = 'us-west-2';
 export const APPLICATION_ID = 'application123';
@@ -58,7 +64,22 @@ export const PUT_RUM_EVENTS_REQUEST: PutRumEventsRequest = {
     ]
 };
 
+export const EVALUATE_FEATURE_REQUEST: BatchEvaluateFeatureRequest = {
+    requests: [
+        {
+            entityId: '1234',
+            evaluationContext: '{"color":"red"}',
+            feature: 'feature01'
+        }
+    ]
+};
+
 export const DEFAULT_CONFIG: Config = defaultConfig(defaultCookieAttributes());
+
+export const DEFAULT_EVIDENTLY_CONFIG: Config = {
+    ...DEFAULT_CONFIG,
+    evidentlyConfig: defaultEvidentlyConfig({ project: 'project01' })
+};
 
 export const createDefaultEventCache = (): EventCache => {
     return new EventCache(APP_MONITOR_DETAILS, DEFAULT_CONFIG);
@@ -75,6 +96,15 @@ export const createDefaultEventCacheWithEvents = (): EventCache => {
     eventCache.recordEvent(EVENT1_SCHEMA, {});
     eventCache.recordEvent(EVENT2_SCHEMA, {});
     return eventCache;
+};
+
+export const createDefaultDispatch = (): Dispatch => {
+    return new Dispatch(
+        AWS_RUM_REGION,
+        AWS_RUM_ENDPOINT,
+        createDefaultEventCache(),
+        DEFAULT_CONFIG
+    );
 };
 
 export const createAwsCredentials = (): Credentials => {

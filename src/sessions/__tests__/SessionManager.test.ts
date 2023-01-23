@@ -1,5 +1,6 @@
 import {
     Attributes,
+    EVIDENTLY_EVALUATION_PREFIX,
     NIL_UUID,
     Session,
     SessionManager,
@@ -758,5 +759,29 @@ describe('SessionManager tests', () => {
         );
         expect(actualSessionAttributes.customAttributeNumber).toEqual(1);
         expect(actualSessionAttributes.customAttributeBoolean).toEqual(true);
+    });
+
+    test('when evidently attributes are added, then feature names are prefixed', async () => {
+        // Init
+        const sessionManager = defaultSessionManager({
+            ...DEFAULT_CONFIG
+        });
+
+        const evidentlyAttributes: { [k: string]: string } = {
+            feature01: 'variation01',
+            feature02: 'variation02',
+            feature03: 'variation03'
+        };
+
+        sessionManager.addEvidentlyAttributes(evidentlyAttributes);
+
+        const actualSessionAttributes = sessionManager.getAttributes();
+
+        // Assert
+        for (const keyName of Object.keys(evidentlyAttributes)) {
+            expect(
+                actualSessionAttributes[EVIDENTLY_EVALUATION_PREFIX + keyName]
+            ).toEqual(evidentlyAttributes[keyName]);
+        }
     });
 });

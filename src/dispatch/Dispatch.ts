@@ -3,10 +3,12 @@ import { EventCache } from '../event-cache/EventCache';
 import { DataPlaneClient } from './DataPlaneClient';
 import { BeaconHttpHandler } from './BeaconHttpHandler';
 import { FetchHttpHandler } from './FetchHttpHandler';
+import { EvidentlyClient } from './EvidentlyClient';
 import { PutRumEventsRequest } from './dataplane';
 import { Config } from '../orchestration/Orchestration';
 import { v4 } from 'uuid';
 import { RetryHttpHandler } from './RetryHttpHandler';
+import { BatchEvaluateFeatureRequest } from '../evidently/types';
 
 type SendFunction = (
     putRumEventsRequest: PutRumEventsRequest
@@ -17,6 +19,12 @@ interface DataPlaneClientInterface {
     sendBeacon: SendFunction;
 }
 
+interface EvidentlyClientInterface {
+    batchEvaluateFeature: (
+        request: BatchEvaluateFeatureRequest
+    ) => Promise<{ response: HttpResponse }>;
+}
+
 const NO_CRED_MSG = 'CWR: Cannot dispatch; no AWS credentials.';
 
 export type ClientBuilder = (
@@ -25,14 +33,23 @@ export type ClientBuilder = (
     credentials: CredentialProvider | Credentials | undefined
 ) => DataPlaneClient;
 
+export type EvidentlyClientBuilder = (
+    endpoint: URL,
+    region: string,
+    credentials: CredentialProvider | Credentials | undefined,
+    project?: string
+) => EvidentlyClientInterface;
+
 export class Dispatch {
     private region: string;
     private endpoint: URL;
     private eventCache: EventCache;
     private rum: DataPlaneClientInterface;
+    private evidently: EvidentlyClientInterface;
     private enabled: boolean;
     private dispatchTimerId: number | undefined;
     private buildClient: ClientBuilder;
+    private buildEvidentlyClient: EvidentlyClientBuilder;
     private config: Config;
 
     constructor(
@@ -46,6 +63,8 @@ export class Dispatch {
         this.eventCache = eventCache;
         this.enabled = true;
         this.buildClient = config.clientBuilder || this.defaultClientBuilder;
+        this.buildEvidentlyClient =
+            config.evidentlyClientBuilder || this.defaultEvidentlyClientBuilder;
         this.config = config;
         this.startDispatchTimer();
         if (config.signing) {
@@ -57,8 +76,21 @@ export class Dispatch {
                     return Promise.reject(new Error(NO_CRED_MSG));
                 }
             };
+            this.evidently = {
+                batchEvaluateFeature: (): Promise<{
+                    response: HttpResponse;
+                }> => {
+                    return Promise.reject(new Error(NO_CRED_MSG));
+                }
+            };
         } else {
             this.rum = this.buildClient(this.endpoint, this.region, undefined);
+            this.evidently = this.buildEvidentlyClient(
+                this.config.evidentlyConfig.endpointUrl,
+                this.region,
+                undefined,
+                this.config.evidentlyConfig.project
+            );
         }
     }
 
@@ -92,12 +124,27 @@ export class Dispatch {
             this.region,
             credentialProvider
         );
+        this.evidently = this.buildEvidentlyClient(
+            this.config.evidentlyConfig.endpointUrl,
+            this.region,
+            credentialProvider,
+            this.config.evidentlyConfig.project
+        );
         if (typeof credentialProvider === 'function') {
             // In case a beacon in the first dispatch, we must pre-fetch credentials into a cookie so there is no delay
             // to fetch credentials while the page is closing.
             (credentialProvider as () => Promise<Credentials>)();
         }
     }
+
+    /**
+     * Make an evaluateFeature API call and return the response.
+     */
+    public dispatchBatchEvaluateFeature = async (
+        request: BatchEvaluateFeatureRequest
+    ): Promise<{ response: HttpResponse } | undefined> => {
+        return this.evidently.batchEvaluateFeature(request);
+    };
 
     /**
      * Send meta data and events to the AWS RUM data plane service via fetch.
@@ -256,6 +303,34 @@ export class Dispatch {
             endpoint,
             region,
             credentials
+        });
+    };
+
+    /**
+     * The default method for creating Evidently service clients.
+     *
+     * @param endpoint Service endpoint.
+     * @param region  Service region.
+     * @param credentials AWS credentials.
+     * @param project Evidently project.
+     */
+    private defaultEvidentlyClientBuilder: EvidentlyClientBuilder = (
+        endpoint,
+        region,
+        credentials,
+        project
+    ) => {
+        return new EvidentlyClient({
+            fetchRequestHandler: new RetryHttpHandler(
+                new FetchHttpHandler({
+                    fetchFunction: this.config.fetchFunction
+                }),
+                this.config.retries
+            ),
+            endpoint,
+            region,
+            credentials,
+            project
         });
     };
 }

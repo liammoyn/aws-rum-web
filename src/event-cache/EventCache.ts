@@ -1,4 +1,8 @@
-import { Session, SessionManager } from '../sessions/SessionManager';
+import {
+    EvidentlyAttributes,
+    Session,
+    SessionManager
+} from '../sessions/SessionManager';
 import { v4 } from 'uuid';
 import { MetaData } from '../events/meta-data';
 import { Config } from '../orchestration/Orchestration';
@@ -160,6 +164,21 @@ export class EventCache {
         [k: string]: string | number | boolean;
     }): void {
         this.sessionManager.addSessionAttributes(sessionAttributes);
+    }
+    /**
+     * Adds Evidently evaluations to session attributes.
+     *
+     * @param evidentlyAttributes object mapping feature names to variation names
+     */
+    public addEvidentlyAttributes(evidentlyAttributes: EvidentlyAttributes) {
+        this.sessionManager.addEvidentlyAttributes(evidentlyAttributes);
+    }
+
+    /**
+     * Resets the Evidently evaluations in the session attributes.
+     */
+    public resetEvidentlyAttributes() {
+        this.sessionManager.resetEvidentlyAttributes();
     }
 
     /**

@@ -9,6 +9,7 @@ import {
 } from '../test-utils/mock-remote-config';
 import { Response } from 'node-fetch';
 import * as RemoteConfig from '../remote-config/remote-config';
+import * as EvidentlyTypes from '../evidently/types';
 
 const mockFetch = jest.fn();
 
@@ -48,6 +49,8 @@ const recordPageView = jest.fn();
 const recordError = jest.fn();
 const registerDomEvents = jest.fn();
 const recordEvent = jest.fn();
+const initializeFeatures = jest.fn();
+const evaluateFeature = jest.fn();
 jest.mock('../orchestration/Orchestration', () => ({
     Orchestration: jest.fn().mockImplementation(() => ({
         disable,
@@ -60,7 +63,9 @@ jest.mock('../orchestration/Orchestration', () => ({
         recordPageView,
         recordError,
         registerDomEvents,
-        recordEvent
+        recordEvent,
+        initializeFeatures,
+        evaluateFeature
     }))
 }));
 
@@ -293,7 +298,7 @@ describe('CommandQueue tests', () => {
         const cq: CommandQueue = getCommandQueue();
         await cq.push({
             c: 'registerDomEvents',
-            p: false
+            p: [false]
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(registerDomEvents).toHaveBeenCalled();
@@ -304,12 +309,122 @@ describe('CommandQueue tests', () => {
         await cq
             .push({
                 c: 'allowCookies',
-                p: ''
+                p: ['']
             })
             .then((v) => fail('command should fail'))
             .catch((e) =>
                 expect(e.message).toEqual('IncorrectParametersException')
             );
+    });
+
+    test('initializeFeatures calls Orchestration.initializeFeatures', async () => {
+        const cq: CommandQueue = getCommandQueue();
+        jest.spyOn(
+            EvidentlyTypes,
+            'isValidInitalizeFeaturesRequest'
+        ).mockReturnValue(true);
+        await cq.push({
+            c: 'initializeFeatures',
+            p: {}
+        });
+        expect(Orchestration).toHaveBeenCalled();
+        expect(initializeFeatures).toHaveBeenCalled();
+    });
+
+    test('initializeFeatures fails when not given incorrect body parameters', async () => {
+        const cq: CommandQueue = getCommandQueue();
+        jest.spyOn(
+            EvidentlyTypes,
+            'isValidInitalizeFeaturesRequest'
+        ).mockReturnValue(false);
+        await cq
+            .push({
+                c: 'evaluateFeature',
+                p: {}
+            })
+            .then((v) => fail('command should fail'))
+            .catch((e) =>
+                expect(e.message).toEqual('IncorrectParametersException')
+            );
+    });
+
+    test('evaluateFeature fails when not given a callback', async () => {
+        const cq: CommandQueue = getCommandQueue();
+        await cq
+            .push({
+                c: 'evaluateFeature',
+                p: { feature: 'feature01' }
+            })
+            .then((v) => fail('command should fail'))
+            .catch((e) =>
+                expect(e.message).toEqual('IncorrectParametersException')
+            );
+    });
+
+    test('evaluateFeature fails when not given features', async () => {
+        const cq: CommandQueue = getCommandQueue();
+        await cq
+            .push({
+                c: 'evaluateFeature',
+                p: { callback: jest.fn() }
+            })
+            .then((v) => fail('command should fail'))
+            .catch((e) =>
+                expect(e.message).toEqual('IncorrectParametersException')
+            );
+    });
+
+    test('evaluateFeature fails when not given payload', async () => {
+        const cq: CommandQueue = getCommandQueue();
+        await cq
+            .push({
+                c: 'evaluateFeature',
+                p: undefined
+            })
+            .then((v) => fail('command should fail'))
+            .catch((e) =>
+                expect(e.message).toEqual('IncorrectParametersException')
+            );
+    });
+
+    test('evaluateFeature will trigger callback when promise is resolved', async () => {
+        const responseValue = 'TestResponse';
+        (evaluateFeature as any).mockReturnValue(
+            Promise.resolve(responseValue)
+        );
+        const mockCallback = jest.fn();
+
+        const cq: CommandQueue = getCommandQueue();
+        await cq.push({
+            c: 'evaluateFeature',
+            p: { feature: 'feature01', callback: mockCallback }
+        });
+
+        expect(Orchestration).toHaveBeenCalled();
+        expect(evaluateFeature).toHaveBeenCalled();
+        expect(mockCallback).toHaveBeenCalledWith(undefined, responseValue);
+    });
+
+    test('evaluateFeature will trigger callback when promise is rejected', async () => {
+        const rejectError = new Error('TestError');
+        (evaluateFeature as any).mockImplementation(
+            () =>
+                new Promise(() => {
+                    throw rejectError;
+                })
+        );
+        const mockCallback = jest.fn();
+
+        const cq: CommandQueue = getCommandQueue();
+        await cq.push({
+            c: 'evaluateFeature',
+            p: { feature: 'feature01', callback: mockCallback }
+        });
+
+        expect(Orchestration).toHaveBeenCalled();
+        expect(evaluateFeature).toHaveBeenCalled();
+        await new Promise((r) => setTimeout(r, 500));
+        expect(mockCallback).toHaveBeenCalledWith(rejectError, undefined);
     });
 
     test('when function is unknown, UnsupportedOperationException is thrown', async () => {

@@ -18,6 +18,8 @@ export const SESSION_START_EVENT_TYPE = 'com.amazon.rum.session_start_event';
 export const RUM_SESSION_START = 'rum_session_start';
 export const RUM_SESSION_EXPIRE = 'rum_session_expire';
 
+export const EVIDENTLY_EVALUATION_PREFIX = 'aws:evidently:';
+
 export type RecordSessionInitEvent = (
     session: Session,
     type: string,
@@ -49,6 +51,10 @@ export type Attributes = {
     [k: string]: string | number | boolean;
 };
 
+export type EvidentlyAttributes = {
+    [feature: string]: string;
+};
+
 /**
  * The session handler handles user id and session id.
  *
@@ -69,6 +75,7 @@ export class SessionManager {
     private config: Config;
     private record: RecordSessionInitEvent;
     private attributes!: Attributes;
+    private evidentlyAttributes!: EvidentlyAttributes;
 
     constructor(
         appMonitorDetails: AppMonitorDetails,
@@ -97,6 +104,8 @@ export class SessionManager {
         // Set custom session attributes
         this.addSessionAttributes(this.config.sessionAttributes);
 
+        this.resetEvidentlyAttributes();
+
         // Attempt to restore the previous session
         this.getSessionFromCookie();
     }
@@ -119,7 +128,7 @@ export class SessionManager {
     }
 
     public getAttributes(): Attributes {
-        return this.attributes;
+        return { ...this.attributes, ...this.evidentlyAttributes };
     }
 
     /**
@@ -131,6 +140,28 @@ export class SessionManager {
         [k: string]: string | number | boolean;
     }) {
         this.attributes = { ...sessionAttributes, ...this.attributes };
+    }
+
+    /**
+     * Adds evaluations to Evidently attributes.
+     *
+     * @param evidentlyAttributes object mapping feature names to variation names
+     */
+    public addEvidentlyAttributes(evidentlyAttributes: EvidentlyAttributes) {
+        const prefixedAttributes = Object.fromEntries(
+            Object.entries(evidentlyAttributes).map(([k, v]) => [
+                EVIDENTLY_EVALUATION_PREFIX + k,
+                v
+            ])
+        );
+        this.evidentlyAttributes = {
+            ...this.evidentlyAttributes,
+            ...prefixedAttributes
+        };
+    }
+
+    public resetEvidentlyAttributes() {
+        this.evidentlyAttributes = {};
     }
 
     public getUserId(): string {
@@ -154,7 +185,7 @@ export class SessionManager {
 
         if (this.config.userIdRetentionDays <= 0) {
             // Use the 'nil' UUID when the user ID will not be retained
-            this.userId = '00000000-0000-0000-0000-000000000000';
+            this.userId = NIL_UUID;
         } else if (this.useCookies()) {
             userId = this.getUserIdCookie();
             this.userId = userId ? userId : v4();

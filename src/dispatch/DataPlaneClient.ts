@@ -1,41 +1,17 @@
-import { toHex } from '@aws-sdk/util-hex-encoding';
 import { SignatureV4 } from '@aws-sdk/signature-v4';
-import {
-    CredentialProvider,
-    Credentials,
-    HttpResponse,
-    RequestPresigningArguments
-} from '@aws-sdk/types';
+import { CredentialProvider, Credentials, HttpResponse } from '@aws-sdk/types';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpHandler, HttpRequest } from '@aws-sdk/protocol-http';
+import { PutRumEventsRequest } from './dataplane';
 import {
-    AppMonitorDetails,
-    PutRumEventsRequest,
-    UserDetails,
-    RumEvent
-} from './dataplane';
+    CONTENT_TYPE_JSON,
+    CONTENT_TYPE_TEXT,
+    getHttpRequestOptions,
+    REQUEST_PRESIGN_ARGS,
+    serializeRequest
+} from './ClientUtils';
 
-const SERVICE = 'rum';
-const METHOD = 'POST';
-const CONTENT_TYPE_JSON = 'application/json';
-const CONTENT_TYPE_TEXT = 'text/plain;charset=UTF-8';
-
-const REQUEST_PRESIGN_ARGS: RequestPresigningArguments = { expiresIn: 60 };
-
-declare type SerializedRumEvent = {
-    id: string;
-    timestamp: number; // unix timestamp in seconds
-    type: string;
-    metadata?: string;
-    details: string;
-};
-
-declare type SerializedPutRumEventsRequest = {
-    BatchId: string;
-    AppMonitorDetails: AppMonitorDetails;
-    UserDetails: UserDetails;
-    RumEvents: SerializedRumEvent[];
-};
+const RUM_SERVICE = 'rum';
 
 export declare type DataPlaneClientConfig = {
     fetchRequestHandler: HttpHandler;
@@ -56,7 +32,7 @@ export class DataPlaneClient {
                 applyChecksum: true,
                 credentials: config.credentials,
                 region: config.region,
-                service: SERVICE,
+                service: RUM_SERVICE,
                 uriEscapePath: true,
                 sha256: Sha256
             });
@@ -66,9 +42,12 @@ export class DataPlaneClient {
     public sendFetch = async (
         putRumEventsRequest: PutRumEventsRequest
     ): Promise<{ response: HttpResponse }> => {
-        const options = await this.getHttpRequestOptions(
-            putRumEventsRequest,
-            CONTENT_TYPE_JSON
+        const options = await getHttpRequestOptions(
+            serializeRequest(putRumEventsRequest),
+            `appmonitors/${putRumEventsRequest.AppMonitorDetails.id}`,
+            this.config.endpoint,
+            CONTENT_TYPE_JSON,
+            this.awsSigV4 !== undefined
         );
         let request: HttpRequest = new HttpRequest(options);
         if (this.awsSigV4) {
@@ -83,9 +62,12 @@ export class DataPlaneClient {
     public sendBeacon = async (
         putRumEventsRequest: PutRumEventsRequest
     ): Promise<{ response: HttpResponse }> => {
-        const options = await this.getHttpRequestOptions(
-            putRumEventsRequest,
-            CONTENT_TYPE_TEXT
+        const options = await getHttpRequestOptions(
+            serializeRequest(putRumEventsRequest),
+            `appmonitors/${putRumEventsRequest.AppMonitorDetails.id}`,
+            this.config.endpoint,
+            CONTENT_TYPE_TEXT,
+            this.awsSigV4 !== undefined
         );
         let request: HttpRequest = new HttpRequest(options);
         if (this.awsSigV4) {
@@ -99,73 +81,4 @@ export class DataPlaneClient {
         }> = this.config.beaconRequestHandler.handle(request);
         return httpResponse;
     };
-
-    private getHttpRequestOptions = async (
-        putRumEventsRequest: PutRumEventsRequest,
-        contentType: string
-    ) => {
-        const serializedRequest: string = JSON.stringify(
-            serializeRequest(putRumEventsRequest)
-        );
-        const path = this.config.endpoint.pathname.replace(/\/$/, '');
-        const options = {
-            method: METHOD,
-            protocol: this.config.endpoint.protocol,
-            headers: {
-                'content-type': contentType,
-                host: this.config.endpoint.host
-            },
-            hostname: this.config.endpoint.hostname,
-            path: `${path}/appmonitors/${putRumEventsRequest.AppMonitorDetails.id}`,
-            body: serializedRequest
-        };
-        if (this.awsSigV4) {
-            return {
-                ...options,
-                headers: {
-                    ...options.headers,
-                    'X-Amz-Content-Sha256': await hashAndEncode(
-                        serializedRequest
-                    )
-                }
-            };
-        }
-        return options;
-    };
 }
-
-const serializeRequest = (
-    request: PutRumEventsRequest
-): SerializedPutRumEventsRequest => {
-    //  If we were using the AWS SDK client here then the serialization would be handled for us through a generated
-    //  serialization/deserialization library. However, since much of the generated code is unnecessary, we do the
-    //  serialization ourselves with this function.
-    const serializedRumEvents: SerializedRumEvent[] = [];
-    request.RumEvents.forEach((e) =>
-        serializedRumEvents.push(serializeEvent(e))
-    );
-    const serializedRequest: SerializedPutRumEventsRequest = {
-        BatchId: request.BatchId,
-        AppMonitorDetails: request.AppMonitorDetails,
-        UserDetails: request.UserDetails,
-        RumEvents: serializedRumEvents
-    };
-    return serializedRequest;
-};
-
-const serializeEvent = (event: RumEvent): SerializedRumEvent => {
-    return {
-        id: event.id,
-        // Dates must be converted to timestamps before serialization.
-        timestamp: Math.round(event.timestamp.getTime() / 1000),
-        type: event.type,
-        metadata: event.metadata,
-        details: event.details
-    };
-};
-
-const hashAndEncode = async (payload: string) => {
-    const sha256 = new Sha256();
-    sha256.update(payload);
-    return toHex(await sha256.digest()).toLowerCase();
-};

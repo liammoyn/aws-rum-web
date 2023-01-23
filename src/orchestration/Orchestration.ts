@@ -14,7 +14,11 @@ import {
     JS_ERROR_EVENT_PLUGIN_ID
 } from '../plugins/event-plugins/JsErrorPlugin';
 import { EventCache } from '../event-cache/EventCache';
-import { ClientBuilder, Dispatch } from '../dispatch/Dispatch';
+import {
+    ClientBuilder,
+    Dispatch,
+    EvidentlyClientBuilder
+} from '../dispatch/Dispatch';
 import { CredentialProvider, Credentials } from '@aws-sdk/types';
 import { NavigationPlugin } from '../plugins/event-plugins/NavigationPlugin';
 import { ResourcePlugin } from '../plugins/event-plugins/ResourcePlugin';
@@ -23,9 +27,18 @@ import { XhrPlugin } from '../plugins/event-plugins/XhrPlugin';
 import { FetchPlugin } from '../plugins/event-plugins/FetchPlugin';
 import { PageViewPlugin } from '../plugins/event-plugins/PageViewPlugin';
 import { PageAttributes } from '../sessions/PageManager';
+import { EvidentlyManager } from '../evidently/EvidentlyManager';
+import {
+    EvaluateFeatureResult,
+    EvaluationResults,
+    EvidentlyConfig,
+    InitializeFeaturesRequest,
+    PartialEvidentlyConfig
+} from '../evidently/types';
 
-const DEFAULT_REGION = 'us-west-2';
-const DEFAULT_ENDPOINT = `https://dataplane.rum.${DEFAULT_REGION}.amazonaws.com`;
+export const DEFAULT_REGION = 'us-west-2';
+export const DEFAULT_ENDPOINT = `https://dataplane.rum.${DEFAULT_REGION}.amazonaws.com`;
+export const DEFAULT_EVIDENTLY_ENDPOINT = `https://dataplane.evidently.${DEFAULT_REGION}.amazonaws.com`;
 
 export enum TelemetryEnum {
     Errors = 'errors',
@@ -70,6 +83,8 @@ export type PartialConfig = {
     endpoint?: string;
     eventCacheSize?: number;
     eventPluginsToLoad?: Plugin[];
+    evidentlyClientBuilder?: EvidentlyClientBuilder;
+    evidentlyConfig?: PartialEvidentlyConfig;
     guestRoleArn?: string;
     identityPoolId?: string;
     pageIdFormat?: PageIdFormat;
@@ -110,6 +125,21 @@ export const defaultCookieAttributes = (): CookieAttributes => {
     };
 };
 
+export const defaultEvidentlyConfig = (
+    partialConfig?: PartialEvidentlyConfig,
+    region?: string
+): EvidentlyConfig => {
+    const endpointRegion = region || DEFAULT_REGION;
+    const endpoint =
+        partialConfig?.endpoint ||
+        DEFAULT_EVIDENTLY_ENDPOINT.replace(DEFAULT_REGION, endpointRegion);
+    return {
+        project: partialConfig?.project,
+        endpoint,
+        endpointUrl: new URL(endpoint)
+    };
+};
+
 export const defaultConfig = (cookieAttributes: CookieAttributes): Config => {
     return {
         allowCookies: false,
@@ -123,6 +153,7 @@ export const defaultConfig = (cookieAttributes: CookieAttributes): Config => {
         endpointUrl: new URL(DEFAULT_ENDPOINT),
         eventCacheSize: 200,
         eventPluginsToLoad: [],
+        evidentlyConfig: defaultEvidentlyConfig(),
         pageIdFormat: PageIdFormatEnum.Path,
         pagesToExclude: [],
         pagesToInclude: [/.*/],
@@ -163,6 +194,8 @@ export type Config = {
     endpointUrl: URL;
     eventCacheSize: number;
     eventPluginsToLoad: Plugin[];
+    evidentlyClientBuilder?: EvidentlyClientBuilder;
+    evidentlyConfig: EvidentlyConfig;
     /*
      * We must remember the fetch function before the HttpFetch plugin
      * overwrites it via monkey patch. We will use the original fetch function
@@ -202,6 +235,7 @@ export class Orchestration {
     private eventCache: EventCache;
     private dispatchManager: Dispatch;
     private config: Config;
+    private evidentlyManager: EvidentlyManager;
 
     /**
      * Instantiate the CloudWatch RUM web client and begin monitoring the
@@ -256,6 +290,11 @@ export class Orchestration {
         // code.
         this.config.endpointUrl = new URL(this.config.endpoint);
 
+        this.config.evidentlyConfig = {
+            ...defaultEvidentlyConfig(partialConfig.evidentlyConfig, region),
+            ...partialConfig.evidentlyConfig
+        };
+
         this.eventCache = this.initEventCache(
             applicationId,
             applicationVersion
@@ -266,6 +305,8 @@ export class Orchestration {
             applicationId,
             applicationVersion
         );
+
+        this.evidentlyManager = this.initEvidently(this.config);
 
         if (this.config.enableRumClient) {
             this.enable();
@@ -385,6 +426,35 @@ export class Orchestration {
      */
     public recordEvent(eventType: string, eventData: object) {
         this.eventCache.recordEvent(eventType, eventData);
+    }
+
+    /**
+     * Loads evaluations for a given list of features using the provided user context and ID.
+     *
+     * @param request An object with the user indentification and context information and a list of requested features.
+     */
+    public initializeFeatures(request: InitializeFeaturesRequest) {
+        this.evidentlyManager.initializeFeatures(request);
+    }
+
+    /**
+     * Returns evaluations for the passed feature, if is has been previously loaded. Also adds the evaluation to the session attributes.
+     *
+     * @param feature The feature to return evaluation for.
+     * @returns A map from feature name to its given evaluation.
+     */
+    public async evaluateFeature(
+        feature: string
+    ): Promise<EvaluateFeatureResult> {
+        return await this.evidentlyManager.evaluateFeature(feature);
+    }
+
+    private initEvidently(config: Config): EvidentlyManager {
+        return new EvidentlyManager(
+            config,
+            this.eventCache,
+            this.dispatchManager
+        );
     }
 
     private initEventCache(

@@ -1,4 +1,8 @@
-import { Orchestration } from '../Orchestration';
+import {
+    DEFAULT_EVIDENTLY_ENDPOINT,
+    DEFAULT_REGION,
+    Orchestration
+} from '../Orchestration';
 import { Dispatch } from '../../dispatch/Dispatch';
 import { EventCache } from '../../event-cache/EventCache';
 import { DomEventPlugin } from '../../plugins/event-plugins/DomEventPlugin';
@@ -47,6 +51,15 @@ jest.mock('../../plugins/PluginManager', () => ({
         enable: enablePlugins,
         disable: disablePlugins,
         updatePlugin
+    }))
+}));
+
+const initializeFeatures = jest.fn();
+const evaluateFeature = jest.fn();
+jest.mock('../../evidently/EvidentlyManager', () => ({
+    EvidentlyManager: jest.fn().mockImplementation(() => ({
+        initializeFeatures,
+        evaluateFeature
     }))
 }));
 
@@ -160,6 +173,13 @@ describe('Orchestration tests', () => {
             ),
             eventCacheSize: 200,
             eventPluginsToLoad: [],
+            evidentlyConfig: {
+                endpoint: 'https://dataplane.evidently.us-west-2.amazonaws.com',
+                endpointUrl: new URL(
+                    'https://dataplane.evidently.us-west-2.amazonaws.com/'
+                ),
+                project: undefined
+            },
             pageIdFormat: PageIdFormatEnum.Path,
             pagesToExclude: [],
             pagesToInclude: [/.*/],
@@ -480,5 +500,44 @@ describe('Orchestration tests', () => {
         expect(recordEvent).toHaveBeenCalledTimes(1);
         const actual = recordEvent.mock.calls[0][1];
         expect(actual).toEqual(expected);
+    });
+
+    test('when initializeFeatures is called then EvidentlyManager.initializeFeatures is called', async () => {
+        // Init
+        const orchestration = new Orchestration('a', 'c', 'us-east-1', {});
+        const featureList = Array.from({ length: 5 }, (_, i) => `feature${i}`);
+        const expected = { features: featureList };
+
+        orchestration.initializeFeatures(expected);
+        expect(initializeFeatures).toHaveBeenCalledTimes(1);
+        const actual = initializeFeatures.mock.calls[0][0];
+        expect(actual).toEqual(expected);
+    });
+
+    test('when evaluateFeature is called then EvidentlyManager.evaluateFeature is called', async () => {
+        const orchestration = new Orchestration('a', 'c', 'us-east-1', {});
+        const expected = 'feature01';
+
+        orchestration.evaluateFeature(expected);
+        expect(evaluateFeature).toHaveBeenCalledTimes(1);
+        const actual = evaluateFeature.mock.calls[0][0];
+        expect(actual).toEqual(expected);
+    });
+
+    test('when no evidently endpoint is passed then default endpoint is in the correct region', async () => {
+        const MockedDispatch = jest.mocked(Dispatch);
+        const orchestration = new Orchestration('a', 'c', 'us-east-1', {});
+
+        expect(MockedDispatch).toHaveBeenCalledTimes(1);
+        expect(MockedDispatch.mock.calls[0][0]).toBe('us-east-1');
+        const evidentlyConfig = MockedDispatch.mock.calls[0][3].evidentlyConfig;
+        const expectedEvidentlyUrl = DEFAULT_EVIDENTLY_ENDPOINT.replace(
+            DEFAULT_REGION,
+            'us-east-1'
+        );
+        expect(evidentlyConfig.endpoint).toBe(expectedEvidentlyUrl);
+        expect(evidentlyConfig.endpointUrl.href).toBe(
+            expectedEvidentlyUrl + '/'
+        );
     });
 });

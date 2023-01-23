@@ -1,6 +1,7 @@
 import { Dispatch } from '../Dispatch';
 import * as Utils from '../../test-utils/test-utils';
 import { DataPlaneClient } from '../DataPlaneClient';
+import { EvidentlyClient } from '../EvidentlyClient';
 import { CredentialProvider } from '@aws-sdk/types';
 import { DEFAULT_CONFIG, mockFetch } from '../../test-utils/test-utils';
 import { EventCache } from 'event-cache/EventCache';
@@ -12,6 +13,13 @@ jest.mock('../DataPlaneClient', () => ({
     DataPlaneClient: jest
         .fn()
         .mockImplementation(() => ({ sendFetch, sendBeacon }))
+}));
+
+const batchEvaluateFeature = jest.fn(() => Promise.resolve());
+jest.mock('../EvidentlyClient', () => ({
+    EvidentlyClient: jest
+        .fn()
+        .mockImplementation(() => ({ batchEvaluateFeature }))
 }));
 
 describe('Dispatch tests', () => {
@@ -468,5 +476,30 @@ describe('Dispatch tests', () => {
         // Assert
         expect(DataPlaneClient).toHaveBeenCalled();
         expect(sendFetch).toHaveBeenCalledTimes(1);
+    });
+
+    test('dispatchEvaluateFeature calls the EvidentlyClient', async () => {
+        // Init
+        const dispatch = new Dispatch(
+            Utils.AWS_RUM_REGION,
+            Utils.AWS_RUM_ENDPOINT,
+            Utils.createDefaultEventCacheWithEvents(),
+            {
+                ...DEFAULT_CONFIG,
+                evidentlyConfig: {
+                    project: 'PROJECT01',
+                    endpoint: Utils.AWS_EVIDENTLY_ENDPOINT.href,
+                    endpointUrl: Utils.AWS_EVIDENTLY_ENDPOINT
+                }
+            }
+        );
+        dispatch.setAwsCredentials(Utils.createAwsCredentials());
+
+        // Run
+        await dispatch.dispatchBatchEvaluateFeature({ requests: [] });
+
+        // Assert
+        expect(EvidentlyClient).toHaveBeenCalled();
+        expect(batchEvaluateFeature).toHaveBeenCalledTimes(1);
     });
 });
