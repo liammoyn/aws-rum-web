@@ -1,6 +1,10 @@
 import { CredentialProvider, Credentials } from '@aws-sdk/types';
 import { Plugin } from 'plugins/Plugin';
-import { EvaluationCallback, InitializeFeaturesRequest } from 'evidently/types';
+import {
+    EvaluationCallback,
+    InitializeFeaturesRequest,
+    isValidInitalizeFeaturesRequest
+} from './evidently/types';
 import { PartialConfig, Orchestration } from './orchestration/Orchestration';
 import { getRemoteConfig } from './remote-config/remote-config';
 
@@ -101,7 +105,11 @@ export class CommandQueue {
             }
         },
         initializeFeatures: (request: InitializeFeaturesRequest): void => {
-            this.orchestration.initializeFeatures(request);
+            if (isValidInitalizeFeaturesRequest(request)) {
+                this.orchestration.initializeFeatures(request);
+            } else {
+                throw new Error('IncorrectParametersException');
+            }
         },
         evaluateFeature: (request: {
             feature: string;

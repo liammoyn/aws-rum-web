@@ -9,6 +9,7 @@ import {
 } from '../test-utils/mock-remote-config';
 import { Response } from 'node-fetch';
 import * as RemoteConfig from '../remote-config/remote-config';
+import * as EvidentlyTypes from '../evidently/types';
 
 const mockFetch = jest.fn();
 
@@ -318,12 +319,33 @@ describe('CommandQueue tests', () => {
 
     test('initializeFeatures calls Orchestration.initializeFeatures', async () => {
         const cq: CommandQueue = getCommandQueue();
+        jest.spyOn(
+            EvidentlyTypes,
+            'isValidInitalizeFeaturesRequest'
+        ).mockReturnValue(true);
         await cq.push({
             c: 'initializeFeatures',
-            p: [false]
+            p: {}
         });
         expect(Orchestration).toHaveBeenCalled();
         expect(initializeFeatures).toHaveBeenCalled();
+    });
+
+    test('initializeFeatures fails when not given incorrect body parameters', async () => {
+        const cq: CommandQueue = getCommandQueue();
+        jest.spyOn(
+            EvidentlyTypes,
+            'isValidInitalizeFeaturesRequest'
+        ).mockReturnValue(false);
+        await cq
+            .push({
+                c: 'evaluateFeature',
+                p: {}
+            })
+            .then((v) => fail('command should fail'))
+            .catch((e) =>
+                expect(e.message).toEqual('IncorrectParametersException')
+            );
     });
 
     test('evaluateFeature fails when not given a callback', async () => {

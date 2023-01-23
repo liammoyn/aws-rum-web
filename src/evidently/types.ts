@@ -17,6 +17,18 @@ export type InitializeFeaturesRequest = {
     entityId?: string;
     context?: string;
 };
+export function isValidInitalizeFeaturesRequest(
+    request: any
+): request is InitializeFeaturesRequest {
+    return (
+        typeof request === 'object' &&
+        (!request.context || typeof request.context === 'string') &&
+        (!request.entityId || typeof request.entityId === 'string') &&
+        Array.isArray(request.features) &&
+        request.features.every((f: any) => typeof f === 'string')
+    );
+}
+
 type VariableValue = {
     boolValue?: boolean;
     doubleValue?: number;
